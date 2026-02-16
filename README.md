@@ -12,6 +12,7 @@ A lightweight, cacheable local CI runner for Rust workspaces. Mirrors GitHub Act
 - 📂 **Workspace Aware**: Auto-detects workspace structure and excludes
 - ⚡ **Config-Driven**: `.local-ci.toml` for per-project customization
 - 🪝 **Git Hooks**: Optional pre-commit hook generation
+- 🔗 **Nix Cache Integration**: Optional attic cache support for faster builds (nix-cache.stevedores.org)
 
 ## Installation
 
@@ -238,6 +239,31 @@ Bypass hook:
 ```bash
 git commit --no-verify
 ```
+
+## Nix Cache Configuration
+
+local-ci supports attic binary cache integration for faster Nix builds:
+
+```bash
+# Configure stevedores attic cache
+local-ci configure-nix-cache
+```
+
+This adds `https://nix-cache.stevedores.org` to your Nix configuration for faster builds across all stevedores-org projects.
+
+**Supported Caches:**
+- `stevedores-attic` (https://nix-cache.stevedores.org) - Trusted cache for stevedores-org ecosystem
+- `cache.nixos.org` - Official NixOS binary cache
+
+**Manual Configuration:**
+
+Add to `~/.config/nix/nix.conf`:
+```ini
+extra-substituters = https://nix-cache.stevedores.org https://cache.nixos.org
+trusted-public-keys = stevedores-attic-1:key cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
+```
+
+Or system-wide in `/etc/nix/nix.conf` (requires root)
 
 ## Workspace Support
 
