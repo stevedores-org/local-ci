@@ -32,11 +32,17 @@ local-ci
 # Run specific stages
 local-ci fmt clippy
 
+# Emit machine-readable output for agents
+local-ci --json
+
 # Disable cache
 local-ci --no-cache
 
 # Auto-fix formatting
 local-ci --fix
+
+# Stop at first failure
+local-ci --fail-fast
 
 # Verbose output
 local-ci --verbose
@@ -55,10 +61,29 @@ local-ci --version
 - **test**: Tests (cargo test --workspace)
 - **check**: Compile check (cargo check)
 
+Unknown stage names now fail fast (instead of being silently ignored).
+
 ## Caching
 
 Cache is stored in `.local-ci-cache` and based on MD5 hash of all `.rs` and `.toml` files. Cache is skipped for:
 - `.git`, `target`, `.github`, `scripts`, `.claude` directories
+
+Each stage cache entry includes the command signature, so changing command args invalidates stale cache entries automatically.
+
+## Agent/Automation Mode
+
+Use `--json` for deterministic machine-readable output:
+
+```bash
+local-ci --json
+```
+
+Sample schema:
+- `version`
+- `duration_ms`
+- `passed`
+- `failed`
+- `results[]` with `name`, `command`, `status`, `duration_ms`, `cache_hit`, optional `output`, optional `error`
 
 ## License
 
