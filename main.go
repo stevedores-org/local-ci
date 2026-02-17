@@ -13,19 +13,20 @@
 //	local-ci --verbose      Show detailed output
 //	local-ci --list         List available stages
 //	local-ci --version      Print version
-//
 package main
 
 import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -42,12 +43,31 @@ type Stage struct {
 }
 
 type Result struct {
-	Name      string
-	Status    string
-	Duration  time.Duration
-	Output    string
-	CacheHit  bool
-	Error     error
+	Name     string
+	Command  string
+	Status   string
+	Duration time.Duration
+	Output   string
+	CacheHit bool
+	Error    error
+}
+
+type PipelineReport struct {
+	Version    string       `json:"version"`
+	DurationMS int64        `json:"duration_ms"`
+	Passed     int          `json:"passed"`
+	Failed     int          `json:"failed"`
+	Results    []ResultJSON `json:"results"`
+}
+
+type ResultJSON struct {
+	Name       string `json:"name"`
+	Command    string `json:"command"`
+	Status     string `json:"status"`
+	DurationMS int64  `json:"duration_ms"`
+	CacheHit   bool   `json:"cache_hit"`
+	Output     string `json:"output,omitempty"`
+	Error      string `json:"error,omitempty"`
 }
 
 func main() {
@@ -55,6 +75,8 @@ func main() {
 		flagNoCache  = flag.Bool("no-cache", false, "Disable file hash cache")
 		flagVerbose  = flag.Bool("verbose", false, "Show detailed output")
 		flagFix      = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagFailFast = flag.Bool("fail-fast", false, "Stop on first failed stage")
+		flagJSON     = flag.Bool("json", false, "Emit machine-readable JSON report")
 		flagList     = flag.Bool("list", false, "List available stages")
 		flagVersion  = flag.Bool("version", false, "Print version")
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
@@ -78,6 +100,10 @@ func main() {
 	if *flagVersion {
 		fmt.Printf("local-ci v%s\n", version)
 		return
+	}
+
+	if err := requireCommand("cargo"); err != nil {
+		fatalf("%v", err)
 	}
 
 	cwd, err := os.Getwd()
@@ -123,6 +149,8 @@ func main() {
 	for _, name := range flag.Args() {
 		if stage, ok := stageMap[name]; ok {
 			stages = append(stages, stage)
+		} else {
+			fatalf("unknown stage %q (use --list)", name)
 		}
 	}
 
@@ -174,18 +202,23 @@ func main() {
 	var results []Result
 	start := time.Now()
 
-	printf("🚀 Running local CI pipeline...\n\n")
+	if !*flagJSON {
+		printf("🚀 Running local CI pipeline...\n\n")
+	}
 
 	for _, stage := range stages {
 		stageStart := time.Now()
+		cmdStr := strings.Join(stage.Cmd, " ")
+		stageCacheKey := sourceHash + "|" + cmdStr
 
 		// Check cache
-		if !*flagNoCache && cache[stage.Name] == sourceHash {
-			if *flagVerbose {
+		if !*flagNoCache && cache[stage.Name] == stageCacheKey {
+			if *flagVerbose && !*flagJSON {
 				printf("✓ %s (cached)\n", stage.Name)
 			}
 			results = append(results, Result{
 				Name:     stage.Name,
+				Command:  cmdStr,
 				Status:   "pass",
 				CacheHit: true,
 				Duration: 0,
@@ -194,10 +227,11 @@ func main() {
 		}
 
 		// Print stage header
-		printf("::group::%s\n", stage.Name)
-		if *flagVerbose {
-			cmdStr := strings.Join(stage.Cmd, " ")
-			printf("$ %s\n", cmdStr)
+		if !*flagJSON {
+			printf("::group::%s\n", stage.Name)
+			if *flagVerbose {
+				printf("$ %s\n", cmdStr)
+			}
 		}
 
 		// Run stage with timeout
@@ -218,30 +252,39 @@ func main() {
 		duration := time.Since(stageStart)
 
 		if err != nil {
-			printf("%s\n", out.String()) // Show output even if not verbose
-			printf("::endgroup::\n")
-			printf("✗ %s (failed)\n", stage.Name)
+			if !*flagJSON {
+				printf("%s\n", out.String())
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+			}
 			results = append(results, Result{
 				Name:     stage.Name,
+				Command:  cmdStr,
 				Status:   "fail",
 				Duration: duration,
 				Error:    err,
 				Output:   out.String(),
 			})
-		} else {
-			if *flagVerbose {
-				printf("%s\n", out.String())
+			if *flagFailFast {
+				break
 			}
-			printf("::endgroup::\n")
-			printf("✓ %s (%dms)\n", stage.Name, duration.Milliseconds())
+		} else {
+			if !*flagJSON {
+				if *flagVerbose {
+					printf("%s\n", out.String())
+				}
+				printf("::endgroup::\n")
+				printf("✓ %s (%dms)\n", stage.Name, duration.Milliseconds())
+			}
 			results = append(results, Result{
 				Name:     stage.Name,
+				Command:  cmdStr,
 				Status:   "pass",
 				Duration: duration,
 				Output:   out.String(),
 			})
 			// Update cache
-			cache[stage.Name] = sourceHash
+			cache[stage.Name] = stageCacheKey
 		}
 	}
 
@@ -251,13 +294,11 @@ func main() {
 	}
 
 	// Summary
-	printf("\n")
 	totalDuration := time.Since(start)
 	passCount := 0
 	failCount := 0
 	cachedCount := 0
 	executedCount := 0
-	totalTime := time.Duration(0)
 
 	for _, r := range results {
 		if r.Status == "pass" {
@@ -266,15 +307,32 @@ func main() {
 				cachedCount++
 			} else {
 				executedCount++
-				totalTime += r.Duration
 			}
 		} else {
 			failCount++
-			totalTime += r.Duration
 		}
 	}
 
-	// Summary line
+	// JSON output mode
+	if *flagJSON {
+		report := PipelineReport{
+			Version:    version,
+			DurationMS: totalDuration.Milliseconds(),
+			Passed:     passCount,
+			Failed:     failCount,
+			Results:    toJSONResults(results),
+		}
+		enc := json.NewEncoder(os.Stdout)
+		enc.SetIndent("", "  ")
+		_ = enc.Encode(report)
+		if failCount > 0 {
+			os.Exit(1)
+		}
+		return
+	}
+
+	// Human-readable summary
+	printf("\n")
 	if failCount == 0 {
 		successf("✅ All %d stage(s) passed in %dms\n", len(results), totalDuration.Milliseconds())
 	} else {
@@ -306,6 +364,32 @@ func main() {
 	if failCount > 0 {
 		os.Exit(1)
 	}
+}
+
+func requireCommand(name string) error {
+	if _, err := exec.LookPath(name); err != nil {
+		return fmt.Errorf("required command %q not found in PATH", name)
+	}
+	return nil
+}
+
+func toJSONResults(results []Result) []ResultJSON {
+	out := make([]ResultJSON, 0, len(results))
+	for _, r := range results {
+		item := ResultJSON{
+			Name:       r.Name,
+			Command:    r.Command,
+			Status:     r.Status,
+			DurationMS: r.Duration.Milliseconds(),
+			CacheHit:   r.CacheHit,
+			Output:     strings.TrimSpace(r.Output),
+		}
+		if r.Error != nil {
+			item.Error = r.Error.Error()
+		}
+		out = append(out, item)
+	}
+	return out
 }
 
 // computeSourceHash computes MD5 hash of Rust source files
@@ -389,7 +473,7 @@ func loadCache(root string) (map[string]string, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.Split(line, ":")
+		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
 			cache[parts[0]] = parts[1]
 		}
@@ -401,7 +485,13 @@ func loadCache(root string) (map[string]string, error) {
 // saveCache saves the cache to .local-ci-cache
 func saveCache(cache map[string]string, root string) error {
 	var lines []string
-	for stage, hash := range cache {
+	keys := make([]string, 0, len(cache))
+	for stage := range cache {
+		keys = append(keys, stage)
+	}
+	sort.Strings(keys)
+	for _, stage := range keys {
+		hash := cache[stage]
 		lines = append(lines, fmt.Sprintf("%s:%s", stage, hash))
 	}
 

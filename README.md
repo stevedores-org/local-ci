@@ -66,6 +66,21 @@ local-ci fmt clippy
 # Initialize project
 local-ci init
 
+# Emit machine-readable output for agents
+local-ci --json
+
+# Disable cache
+local-ci --no-cache
+
+# Auto-fix formatting
+local-ci --fix
+
+# Stop at first failure
+local-ci --fail-fast
+
+# Verbose output
+local-ci --verbose
+
 # List available stages
 local-ci --list
 
@@ -206,6 +221,8 @@ If `.local-ci.toml` doesn't exist, local-ci uses sensible defaults:
 - Skips: .git, target, .github, scripts, .claude
 - Hashes: *.rs, *.toml files
 - Timeout: 30s default (per-stage configurable)
+
+Unknown stage names now fail fast (instead of being silently ignored).
 
 ## Caching
 
@@ -393,6 +410,23 @@ cargo install cargo-deny cargo-audit cargo-machete
 ## Contributing
 
 Bug reports and PRs welcome on GitHub: https://github.com/stevedores-org/local-ci
+
+Each stage cache entry includes the command signature, so changing command args invalidates stale cache entries automatically.
+
+## Agent/Automation Mode
+
+Use `--json` for deterministic machine-readable output:
+
+```bash
+local-ci --json
+```
+
+Sample schema:
+- `version`
+- `duration_ms`
+- `passed`
+- `failed`
+- `results[]` with `name`, `command`, `status`, `duration_ms`, `cache_hit`, optional `output`, optional `error`
 
 ## License
 
