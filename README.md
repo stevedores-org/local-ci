@@ -289,7 +289,7 @@ This adds `https://nix-cache.stevedores.org` to your Nix configuration for faste
 Add to `~/.config/nix/nix.conf`:
 ```ini
 extra-substituters = https://nix-cache.stevedores.org https://cache.nixos.org
-trusted-public-keys = stevedores-attic-1:key cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
+trusted-public-keys = oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI= cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
 ```
 
 Or system-wide in `/etc/nix/nix.conf` (requires root)

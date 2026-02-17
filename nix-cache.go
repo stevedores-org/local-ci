@@ -10,25 +10,28 @@ import (
 
 // NixCache represents a Nix binary cache configuration
 type NixCache struct {
-	Name    string // Display name
-	URL     string // Cache URL (e.g., https://nix-cache.stevedores.org)
-	Public  bool   // Whether to add to public binary caches
-	Trusted bool   // Whether to trust the cache
+	Name      string // Display name
+	URL       string // Cache URL (e.g., https://nix-cache.stevedores.org)
+	PublicKey string // Trusted public key (base64-encoded ed25519). Empty means unknown.
+	Public    bool   // Whether to add to public binary caches
+	Trusted   bool   // Whether to trust the cache
 }
 
 // DefaultNixCaches are recommended caches for stevedores-org ecosystem
 var DefaultNixCaches = []NixCache{
 	{
-		Name:    "stevedores-attic",
-		URL:     "https://nix-cache.stevedores.org",
-		Public:  true,
-		Trusted: true,
+		Name:      "stevedores-attic",
+		URL:       "https://nix-cache.stevedores.org",
+		PublicKey: "oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI=",
+		Public:    true,
+		Trusted:   true,
 	},
 	{
-		Name:    "cache.nixos.org",
-		URL:     "https://cache.nixos.org",
-		Public:  true,
-		Trusted: false,
+		Name:      "cache.nixos.org",
+		URL:       "https://cache.nixos.org",
+		PublicKey: "cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=",
+		Public:    true,
+		Trusted:   false,
 	},
 }
 
@@ -114,16 +117,19 @@ func AddNixCache(cache NixCache) error {
 
 	// Build nix.conf addition
 	cacheEntry := fmt.Sprintf("extra-substituters = %s\n", cache.URL)
-	if cache.Trusted {
-		cacheEntry += fmt.Sprintf("trusted-public-keys = %s-1:key\n", cache.Name)
+	if cache.Trusted && cache.PublicKey != "" {
+		cacheEntry += fmt.Sprintf("trusted-public-keys = %s\n", cache.PublicKey)
 	}
-
-	// Write to ~/.config/nix/nix.conf or /etc/nix/nix.conf
-	// This requires elevated privileges for system-wide installation
-	// For user-level, add to ~/.config/nix/nix.conf
+	_ = cacheEntry // reserved for future auto-write support
 
 	warnf("To add cache manually, add to ~/.config/nix/nix.conf:\n")
 	warnf("  extra-substituters = %s\n", cache.URL)
+	if cache.PublicKey != "" {
+		warnf("  trusted-public-keys = %s\n", cache.PublicKey)
+	} else if cache.Trusted {
+		warnf("  ⚠️  No public key available for %s yet — signatures will fail until the key is published.\n", cache.Name)
+		warnf("  Check https://github.com/stevedores-org/local-ci for the trusted-public-keys value.\n")
+	}
 
 	return nil
 }
@@ -151,7 +157,11 @@ func ConfigureAtticCache() error {
 
 	printf("💡 To complete setup, add to ~/.config/nix/nix.conf:\n")
 	printf("   extra-substituters = %s\n", atticCache.URL)
-	printf("   trusted-public-keys = stevedores-attic-1:your-public-key\n\n")
+	if atticCache.PublicKey != "" {
+		printf("   trusted-public-keys = %s\n\n", atticCache.PublicKey)
+	} else {
+		printf("   ⚠️  trusted-public-keys: not yet published — check https://github.com/stevedores-org/local-ci for updates\n\n")
+	}
 
 	return nil
 }
