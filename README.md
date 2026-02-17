@@ -23,6 +23,18 @@ cd local-ci
 go build -o local-ci
 ```
 
+## Nix / Attic Cache
+
+This repo includes a `flake.nix` configured with:
+- `nixConfig.extra-substituters = [ "https://nix-cache.stevedores.org" ]`
+
+Use:
+
+```bash
+nix develop
+go build -o local-ci
+```
+
 ## Usage
 
 ```bash
