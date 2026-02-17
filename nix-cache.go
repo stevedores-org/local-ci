@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 )
 
@@ -36,23 +38,50 @@ func CheckNixInstallation() bool {
 	return cmd.Run() == nil
 }
 
-// GetInstalledCaches returns list of currently installed Nix binary caches
+// GetInstalledCaches returns list of currently configured Nix substituters
+// by parsing nix.conf files (user and system level).
 func GetInstalledCaches() ([]string, error) {
-	cmd := exec.Command("nix", "build", "--eval", "-E", "builtins.concatStringsSep \"\\n\" (builtins.attrNames (import <nixpkgs> {}).config.nix.binaryCaches or [])")
-	output, err := cmd.CombinedOutput()
+	var caches []string
+
+	// Check user-level config
+	homeDir, err := os.UserHomeDir()
+	if err == nil {
+		userConf := filepath.Join(homeDir, ".config", "nix", "nix.conf")
+		caches = append(caches, parseSubstitutersFromConf(userConf)...)
+	}
+
+	// Check system-level config
+	caches = append(caches, parseSubstitutersFromConf("/etc/nix/nix.conf")...)
+
+	return caches, nil
+}
+
+// parseSubstitutersFromConf extracts substituter URLs from a nix.conf file.
+func parseSubstitutersFromConf(confPath string) []string {
+	data, err := os.ReadFile(confPath)
 	if err != nil {
-		return nil, err
+		return nil
 	}
 
 	var caches []string
-	for _, line := range strings.Split(string(output), "\n") {
+	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
-		if line != "" && !strings.HasPrefix(line, "error") {
-			caches = append(caches, line)
+		if strings.HasPrefix(line, "#") {
+			continue
+		}
+		// Match "substituters = ..." or "extra-substituters = ..."
+		for _, key := range []string{"substituters", "extra-substituters"} {
+			if strings.HasPrefix(line, key) {
+				parts := strings.SplitN(line, "=", 2)
+				if len(parts) == 2 {
+					for _, url := range strings.Fields(strings.TrimSpace(parts[1])) {
+						caches = append(caches, url)
+					}
+				}
+			}
 		}
 	}
-
-	return caches, nil
+	return caches
 }
 
 // IsCacheInstalled checks if a specific cache is already configured

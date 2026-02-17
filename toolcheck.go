@@ -130,7 +130,9 @@ func GetMissingTools() []string {
 func GetMissingToolsWithHints() map[string]string {
 	hints := make(map[string]string)
 
-	allTools := append(cargoTools, systemTools...)
+	allTools := make([]Tool, 0, len(cargoTools)+len(systemTools))
+	allTools = append(allTools, cargoTools...)
+	allTools = append(allTools, systemTools...)
 	for _, tool := range allTools {
 		if tool.Optional && !CheckToolInstalled(&tool).Found {
 			hints[tool.Name] = tool.InstallCmd
@@ -151,7 +153,9 @@ func ToolIsAvailable(toolName string) bool {
 
 // getToolByName finds a tool by name
 func getToolByName(name string) *Tool {
-	allTools := append(cargoTools, systemTools...)
+	allTools := make([]Tool, 0, len(cargoTools)+len(systemTools))
+	allTools = append(allTools, cargoTools...)
+	allTools = append(allTools, systemTools...)
 	for _, tool := range allTools {
 		if strings.EqualFold(tool.Name, name) {
 			return &tool

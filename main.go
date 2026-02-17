@@ -133,12 +133,13 @@ func main() {
 		}
 	}
 
-	// If --all, include disabled stages
+	// If --all, rebuild stage list from all stages (including disabled)
 	if *flagAll {
-		for _, stage := range stages {
-			if !stage.Enabled {
-				stage.Enabled = true
-			}
+		stages = nil
+		for name, stage := range stageMap {
+			stage.Name = name
+			stage.Enabled = true
+			stages = append(stages, stage)
 		}
 	}
 
