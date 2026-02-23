@@ -120,18 +120,6 @@ func main() {
 		fatalf("No project detected. Expected Cargo.toml (Rust) or package.json + tsconfig.json/bunfig.toml (TypeScript) in %s", cwd)
 	}
 
-	// Require the appropriate toolchain
-	switch kind {
-	case ProjectKindTypeScript:
-		if err := requireCommand("bun"); err != nil {
-			fatalf("%v", err)
-		}
-	default:
-		if err := requireCommand("cargo"); err != nil {
-			fatalf("%v", err)
-		}
-	}
-
 	// Handle init subcommand
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "init" {
@@ -196,6 +184,11 @@ func main() {
 			stage.Enabled = true
 			stages = append(stages, stage)
 		}
+	}
+
+	// Validate that commands for selected stages are installed
+	if err := validateStageCommands(stages); err != nil {
+		fatalf("%v", err)
 	}
 
 	// If --fix, swap in fix commands for stages that have them
@@ -381,7 +374,7 @@ func main() {
 	printf("  Total time: %dms\n", totalDuration.Milliseconds())
 
 	// Show missing tools (optional)
-	missingTools := GetMissingToolsWithHints()
+	missingTools := GetMissingToolsWithHints(kind)
 	if len(missingTools) > 0 {
 		printf("%s", FormatMissingToolsMessage(missingTools))
 	}
@@ -395,6 +388,27 @@ func main() {
 func requireCommand(name string) error {
 	if _, err := exec.LookPath(name); err != nil {
 		return fmt.Errorf("required command %q not found in PATH", name)
+	}
+	return nil
+}
+
+// validateStageCommands checks that the binary for each stage is available in PATH.
+func validateStageCommands(stages []Stage) error {
+	seen := make(map[string]bool)
+	for _, stage := range stages {
+		if len(stage.Cmd) == 0 {
+			return fmt.Errorf("stage %q has empty command", stage.Name)
+		}
+
+		cmd := stage.Cmd[0]
+		if seen[cmd] {
+			continue
+		}
+
+		if err := requireCommand(cmd); err != nil {
+			return fmt.Errorf("stage %q requires command %q: %w", stage.Name, cmd, err)
+		}
+		seen[cmd] = true
 	}
 	return nil
 }
@@ -525,6 +539,22 @@ func saveCache(cache map[string]string, root string) error {
 	return os.WriteFile(cachePath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
+// printWorkspace prints workspace detection results.
+func printWorkspace(ws *Workspace, unitName string) {
+	if ws.IsSingle {
+		printf("  Single %s: %s\n", unitName, ws.Members[0])
+	} else {
+		printf("  Workspace with %d members\n", len(ws.Members))
+		for _, member := range ws.Members {
+			if !ws.IsExcluded(member) {
+				printf("    ✓ %s\n", member)
+			} else {
+				printf("    ✗ %s (excluded)\n", member)
+			}
+		}
+	}
+}
+
 // cmdInit initializes a new .local-ci.toml configuration
 func cmdInit(root string, kind ProjectKind) {
 	printf("📦 Initializing local-ci for %s (%s project)\n", root, kind)
@@ -535,14 +565,7 @@ func cmdInit(root string, kind ProjectKind) {
 		if err != nil {
 			fatalf("Failed to detect workspace: %v", err)
 		}
-		if ws.IsSingle {
-			printf("  Single package: %s\n", ws.Members[0])
-		} else {
-			printf("  Workspace with %d members\n", len(ws.Members))
-			for _, member := range ws.Members {
-				printf("    ✓ %s\n", member)
-			}
-		}
+		printWorkspace(ws, "package")
 		if err := SaveDefaultTypeScriptConfig(root); err != nil {
 			fatalf("Failed to save config: %v", err)
 		}
@@ -552,18 +575,7 @@ func cmdInit(root string, kind ProjectKind) {
 		if err != nil {
 			fatalf("Failed to detect workspace: %v", err)
 		}
-		if ws.IsSingle {
-			printf("  Single crate: %s\n", ws.Members[0])
-		} else {
-			printf("  Workspace with %d members\n", len(ws.Members))
-			for _, member := range ws.Members {
-				if !ws.IsExcluded(member) {
-					printf("    ✓ %s\n", member)
-				} else {
-					printf("    ✗ %s (excluded)\n", member)
-				}
-			}
-		}
+		printWorkspace(ws, "crate")
 		if err := SaveDefaultConfig(root, ws); err != nil {
 			fatalf("Failed to save config: %v", err)
 		}
@@ -589,10 +601,15 @@ func cmdInit(root string, kind ProjectKind) {
 	printf("\n💡 Next steps:\n")
 	printf("  1. Run 'local-ci' to test the setup\n")
 	printf("  2. Customize .local-ci.toml as needed\n")
-	printf("  3. Consider installing cargo tools:\n")
-	printf("     - cargo install cargo-deny\n")
-	printf("     - cargo install cargo-audit\n")
-	printf("     - cargo install cargo-machete\n")
+	switch kind {
+	case ProjectKindTypeScript:
+		printf("  3. Ensure your package.json has 'lint' and 'format' scripts\n")
+	default:
+		printf("  3. Consider installing cargo tools:\n")
+		printf("     - cargo install cargo-deny\n")
+		printf("     - cargo install cargo-audit\n")
+		printf("     - cargo install cargo-machete\n")
+	}
 }
 
 // updateGitignore adds an entry to .gitignore if not already present

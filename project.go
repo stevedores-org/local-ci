@@ -15,7 +15,7 @@ const (
 )
 
 // DetectProjectKind inspects the root directory to determine the project type.
-// Precedence: Cargo.toml → Rust, package.json + TS indicator → TypeScript.
+// Precedence: Cargo.toml → Rust, package.json + TS/Bun indicator → TypeScript.
 func DetectProjectKind(root string) ProjectKind {
 	if fileExistsAt(filepath.Join(root, "Cargo.toml")) {
 		return ProjectKindRust
@@ -24,7 +24,8 @@ func DetectProjectKind(root string) ProjectKind {
 	if fileExistsAt(filepath.Join(root, "package.json")) {
 		hasTSConfig := fileExistsAt(filepath.Join(root, "tsconfig.json"))
 		hasBunfig := fileExistsAt(filepath.Join(root, "bunfig.toml"))
-		if hasTSConfig || hasBunfig {
+		hasBunLock := fileExistsAt(filepath.Join(root, "bun.lock")) || fileExistsAt(filepath.Join(root, "bun.lockb"))
+		if hasTSConfig || hasBunfig || hasBunLock {
 			return ProjectKindTypeScript
 		}
 	}

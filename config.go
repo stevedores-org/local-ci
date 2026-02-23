@@ -45,17 +45,11 @@ type WorkspaceConfig struct {
 
 // LoadConfig loads configuration from .local-ci.toml or returns defaults.
 // The kind parameter selects Rust or TypeScript defaults when no config file exists.
-func LoadConfig(root string, kind ...ProjectKind) (*Config, error) {
+func LoadConfig(root string, kind ProjectKind) (*Config, error) {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
-	// Select defaults based on project kind
-	projectKind := ProjectKindRust
-	if len(kind) > 0 {
-		projectKind = kind[0]
-	}
-
 	var cfg *Config
-	if projectKind == ProjectKindTypeScript {
+	if kind == ProjectKindTypeScript {
 		cfg = defaultTypeScriptConfig()
 	} else {
 		cfg = &Config{
@@ -90,7 +84,7 @@ func LoadConfig(root string, kind ...ProjectKind) (*Config, error) {
 
 	// Merge defaults for stages not specified
 	var defaults map[string]Stage
-	if projectKind == ProjectKindTypeScript {
+	if kind == ProjectKindTypeScript {
 		defaults = defaultTypeScriptStages()
 	} else {
 		defaults = defaultStages()

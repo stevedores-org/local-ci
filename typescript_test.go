@@ -63,13 +63,35 @@ func TestDetectProjectKindUnknown(t *testing.T) {
 }
 
 func TestDetectProjectKindPackageJSONAlone(t *testing.T) {
-	// package.json without tsconfig or bunfig → unknown
+	// package.json without tsconfig, bunfig, or bun.lock → unknown
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 
 	kind := DetectProjectKind(dir)
 	if kind != ProjectKindUnknown {
-		t.Errorf("expected %q for package.json without TS indicator, got %q", ProjectKindUnknown, kind)
+		t.Errorf("expected %q for package.json without TS/Bun indicator, got %q", ProjectKindUnknown, kind)
+	}
+}
+
+func TestDetectProjectKindBunLock(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
+	os.WriteFile(filepath.Join(dir, "bun.lock"), []byte(""), 0644)
+
+	kind := DetectProjectKind(dir)
+	if kind != ProjectKindTypeScript {
+		t.Errorf("expected %q for package.json + bun.lock, got %q", ProjectKindTypeScript, kind)
+	}
+}
+
+func TestDetectProjectKindBunLockb(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
+	os.WriteFile(filepath.Join(dir, "bun.lockb"), []byte(""), 0644)
+
+	kind := DetectProjectKind(dir)
+	if kind != ProjectKindTypeScript {
+		t.Errorf("expected %q for package.json + bun.lockb, got %q", ProjectKindTypeScript, kind)
 	}
 }
 
@@ -90,10 +112,10 @@ func TestTypeScriptDefaultStages(t *testing.T) {
 		}
 	}
 
-	// Verify typecheck uses bun + tsc
+	// Verify typecheck uses bun x tsc (auto-resolves typescript)
 	tc := stages["typecheck"]
-	if tc.Cmd[0] != "bun" {
-		t.Errorf("typecheck cmd[0]: expected bun, got %q", tc.Cmd[0])
+	if tc.Cmd[0] != "bun" || tc.Cmd[1] != "x" {
+		t.Errorf("typecheck should use 'bun x', got %v", tc.Cmd)
 	}
 	if !sliceContains(tc.Cmd, "tsc") || !sliceContains(tc.Cmd, "--noEmit") {
 		t.Errorf("typecheck cmd missing tsc --noEmit: %v", tc.Cmd)
@@ -105,10 +127,10 @@ func TestTypeScriptDefaultStages(t *testing.T) {
 		t.Errorf("test cmd unexpected: %v", ts.Cmd)
 	}
 
-	// Verify lint uses eslint
+	// Verify lint delegates to package.json script
 	lint := stages["lint"]
-	if lint.Cmd[0] != "bun" || !sliceContains(lint.Cmd, "eslint") {
-		t.Errorf("lint cmd unexpected: %v", lint.Cmd)
+	if lint.Cmd[0] != "bun" || lint.Cmd[1] != "run" || lint.Cmd[2] != "lint" {
+		t.Errorf("lint should be 'bun run lint', got %v", lint.Cmd)
 	}
 
 	// Verify lint has fix command
@@ -116,15 +138,18 @@ func TestTypeScriptDefaultStages(t *testing.T) {
 		t.Errorf("lint FixCmd should contain --fix: %v", lint.FixCmd)
 	}
 
-	// Verify format uses prettier
-	fmt := stages["format"]
-	if fmt.Cmd[0] != "bun" || !sliceContains(fmt.Cmd, "prettier") {
-		t.Errorf("format cmd unexpected: %v", fmt.Cmd)
+	// Verify format delegates to package.json script
+	fmtStage := stages["format"]
+	if fmtStage.Cmd[0] != "bun" || fmtStage.Cmd[1] != "run" || fmtStage.Cmd[2] != "format" {
+		t.Errorf("format should be 'bun run format ...', got %v", fmtStage.Cmd)
 	}
 
-	// Verify format has fix command (--write)
-	if fmt.FixCmd == nil || !sliceContains(fmt.FixCmd, "--write") {
-		t.Errorf("format FixCmd should contain --write: %v", fmt.FixCmd)
+	// Verify format has fix command (without --check)
+	if fmtStage.FixCmd == nil {
+		t.Fatal("format stage should have FixCmd")
+	}
+	if sliceContains(fmtStage.FixCmd, "--check") {
+		t.Error("format FixCmd should not contain --check")
 	}
 }
 
@@ -248,7 +273,7 @@ func TestDetectTypeScriptSinglePackage(t *testing.T) {
 func TestTypeScriptFixCmd(t *testing.T) {
 	stages := defaultTypeScriptStages()
 
-	// Lint should have a fix command
+	// Lint should have a fix command with --fix
 	lint := stages["lint"]
 	if lint.FixCmd == nil {
 		t.Fatal("lint stage should have FixCmd")
@@ -256,21 +281,14 @@ func TestTypeScriptFixCmd(t *testing.T) {
 	if !sliceContains(lint.FixCmd, "--fix") {
 		t.Errorf("lint FixCmd should contain --fix: %v", lint.FixCmd)
 	}
-	// Fix command should NOT contain the check-mode args
-	if sliceContains(lint.FixCmd, "--check") {
-		t.Error("lint FixCmd should not contain --check")
-	}
 
-	// Format should swap --check for --write
+	// Format fix should not contain --check
 	format := stages["format"]
 	if format.FixCmd == nil {
 		t.Fatal("format stage should have FixCmd")
 	}
 	if sliceContains(format.FixCmd, "--check") {
 		t.Error("format FixCmd should not contain --check")
-	}
-	if !sliceContains(format.FixCmd, "--write") {
-		t.Errorf("format FixCmd should contain --write: %v", format.FixCmd)
 	}
 }
 

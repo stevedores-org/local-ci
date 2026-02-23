@@ -63,11 +63,13 @@ func DetectTypeScriptWorkspace(root string) (*Workspace, error) {
 }
 
 // defaultTypeScriptStages returns the built-in TS stage definitions.
+// Commands delegate to package.json scripts (bun run <script>) where possible,
+// so projects can use eslint, biome, prettier, or any other tool.
 func defaultTypeScriptStages() map[string]Stage {
 	return map[string]Stage{
 		"typecheck": {
 			Name:    "typecheck",
-			Cmd:     []string{"bun", "run", "tsc", "--noEmit"},
+			Cmd:     []string{"bun", "x", "tsc", "--noEmit"},
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 120,
@@ -75,8 +77,8 @@ func defaultTypeScriptStages() map[string]Stage {
 		},
 		"lint": {
 			Name:    "lint",
-			Cmd:     []string{"bun", "run", "eslint", "."},
-			FixCmd:  []string{"bun", "run", "eslint", ".", "--fix"},
+			Cmd:     []string{"bun", "run", "lint"},
+			FixCmd:  []string{"bun", "run", "lint", "--", "--fix"},
 			Check:   false,
 			Timeout: 300,
 			Enabled: true,
@@ -91,8 +93,8 @@ func defaultTypeScriptStages() map[string]Stage {
 		},
 		"format": {
 			Name:    "format",
-			Cmd:     []string{"bun", "run", "prettier", "--check", "."},
-			FixCmd:  []string{"bun", "run", "prettier", "--write", "."},
+			Cmd:     []string{"bun", "run", "format", "--check"},
+			FixCmd:  []string{"bun", "run", "format"},
 			Check:   true,
 			Timeout: 120,
 			Enabled: false, // disabled by default, optional
@@ -134,6 +136,10 @@ func SaveDefaultTypeScriptConfig(root string) error {
 	content := `# local-ci configuration for TypeScript/Bun projects
 # See: https://github.com/stevedores-org/local-ci
 # Runtime: bun
+#
+# Stages delegate to package.json scripts where possible.
+# Customize the "lint" and "format" scripts in your package.json
+# to use eslint, biome, prettier, or any other tool.
 
 [cache]
 # Directories to skip when computing source hash
@@ -142,13 +148,15 @@ skip_dirs = [".git", "node_modules", "dist", ".next", "coverage", ".claude"]
 include_patterns = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.json"]
 
 [stages.typecheck]
-command = ["bun", "run", "tsc", "--noEmit"]
+# Uses bun x to auto-resolve tsc (requires typescript as a dependency)
+command = ["bun", "x", "tsc", "--noEmit"]
 timeout = 120
 enabled = true
 
 [stages.lint]
-command = ["bun", "run", "eslint", "."]
-fix_command = ["bun", "run", "eslint", ".", "--fix"]
+# Delegates to package.json "lint" script
+command = ["bun", "run", "lint"]
+fix_command = ["bun", "run", "lint", "--", "--fix"]
 timeout = 300
 enabled = true
 
@@ -158,8 +166,9 @@ timeout = 600
 enabled = true
 
 [stages.format]
-command = ["bun", "run", "prettier", "--check", "."]
-fix_command = ["bun", "run", "prettier", "--write", "."]
+# Delegates to package.json "format" script
+command = ["bun", "run", "format", "--check"]
+fix_command = ["bun", "run", "format"]
 timeout = 120
 enabled = false
 
@@ -173,14 +182,3 @@ exclude = []
 	return os.WriteFile(configPath, []byte(content), 0644)
 }
 
-// bunTools defines the tool checks for TypeScript/Bun projects.
-var bunTools = []Tool{
-	{
-		Name:       "bun",
-		Command:    "bun",
-		CheckArgs:  []string{"--version"},
-		InstallCmd: "curl -fsSL https://bun.sh/install | bash",
-		ToolType:   "binary",
-		Optional:   false,
-	},
-}
