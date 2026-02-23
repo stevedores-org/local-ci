@@ -123,7 +123,7 @@ func TestLoadConfigMalformedTOML(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"x\"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte("this is not valid toml {{{}}}"), 0644)
 
-	_, err := LoadConfig(dir)
+	_, err := LoadConfig(dir, ProjectKindRust)
 	if err == nil {
 		t.Error("expected error for malformed TOML config")
 	}
@@ -141,7 +141,7 @@ enabled = true
 `
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte(configContent), 0644)
 
-	config, err := LoadConfig(dir)
+	config, err := LoadConfig(dir, ProjectKindRust)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
