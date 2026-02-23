@@ -1,15 +1,17 @@
-// local-ci — Local CI runner for Rust workspaces.
+// local-ci — Local CI runner for Rust and TypeScript workspaces.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust projects. Supports file-hash caching, configuration files, and colored output.
+// for Rust and TypeScript/Bun projects. Supports file-hash caching,
+// configuration files, and colored output.
 //
 // Usage:
 //
-//	local-ci                Run default stages (fmt, clippy, test)
-//	local-ci fmt clippy     Run specific stages
+//	local-ci                Run default stages
+//	local-ci fmt clippy     Run specific stages (Rust)
+//	local-ci typecheck lint Run specific stages (TypeScript)
 //	local-ci init           Initialize .local-ci.toml in current project
 //	local-ci --no-cache     Disable caching, force all stages
-//	local-ci --fix          Auto-fix formatting (cargo fmt without --check)
+//	local-ci --fix          Auto-fix formatting
 //	local-ci --verbose      Show detailed output
 //	local-ci --list         List available stages
 //	local-ci --version      Print version
@@ -83,15 +85,20 @@ func main() {
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust workspaces\n\n", version)
+		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust & TypeScript workspaces\n\n", version)
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml in current project\n\n")
-		fmt.Fprintf(os.Stderr, "Stages:\n")
+		fmt.Fprintf(os.Stderr, "Rust stages:\n")
 		fmt.Fprintf(os.Stderr, "  fmt       Format check (cargo fmt --check)\n")
 		fmt.Fprintf(os.Stderr, "  clippy    Linter (cargo clippy -D warnings)\n")
 		fmt.Fprintf(os.Stderr, "  test      Tests (cargo test --workspace)\n")
 		fmt.Fprintf(os.Stderr, "  check     Compile check (cargo check)\n\n")
+		fmt.Fprintf(os.Stderr, "TypeScript/Bun stages:\n")
+		fmt.Fprintf(os.Stderr, "  typecheck Type-check (bun run tsc --noEmit)\n")
+		fmt.Fprintf(os.Stderr, "  lint      Lint (bun run eslint .)\n")
+		fmt.Fprintf(os.Stderr, "  test      Tests (bun test)\n")
+		fmt.Fprintf(os.Stderr, "  format    Format check (bun run prettier --check .)\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
@@ -102,30 +109,50 @@ func main() {
 		return
 	}
 
-	if err := requireCommand("cargo"); err != nil {
-		fatalf("%v", err)
-	}
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		fatalf("Cannot get working directory: %v", err)
 	}
 
+	// Detect project kind
+	kind := DetectProjectKind(cwd)
+	if kind == ProjectKindUnknown {
+		fatalf("No project detected. Expected Cargo.toml (Rust) or package.json + tsconfig.json/bunfig.toml (TypeScript) in %s", cwd)
+	}
+
+	// Require the appropriate toolchain
+	switch kind {
+	case ProjectKindTypeScript:
+		if err := requireCommand("bun"); err != nil {
+			fatalf("%v", err)
+		}
+	default:
+		if err := requireCommand("cargo"); err != nil {
+			fatalf("%v", err)
+		}
+	}
+
 	// Handle init subcommand
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "init" {
-		cmdInit(cwd)
+		cmdInit(cwd, kind)
 		return
 	}
 
-	// Load configuration
-	config, err := LoadConfig(cwd)
+	// Load configuration (kind-aware)
+	config, err := LoadConfig(cwd, kind)
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
 	}
 
 	// Detect workspace
-	ws, err := DetectWorkspace(cwd)
+	var ws *Workspace
+	switch kind {
+	case ProjectKindTypeScript:
+		ws, err = DetectTypeScriptWorkspace(cwd)
+	default:
+		ws, err = DetectWorkspace(cwd)
+	}
 	if err != nil && *flagVerbose {
 		warnf("Workspace detection failed: %v", err)
 	}
@@ -171,13 +198,12 @@ func main() {
 		}
 	}
 
-	// If --fix, modify fmt stage
+	// If --fix, swap in fix commands for stages that have them
 	if *flagFix {
 		for i := range stages {
-			if stages[i].Name == "fmt" && len(stages[i].FixCmd) > 0 {
+			if len(stages[i].FixCmd) > 0 {
 				stages[i].Cmd = stages[i].FixCmd
 				stages[i].Check = false
-				break
 			}
 		}
 	}
@@ -500,32 +526,49 @@ func saveCache(cache map[string]string, root string) error {
 }
 
 // cmdInit initializes a new .local-ci.toml configuration
-func cmdInit(root string) {
-	// Detect workspace
-	ws, err := DetectWorkspace(root)
-	if err != nil {
-		fatalf("Failed to detect workspace: %v", err)
-	}
+func cmdInit(root string, kind ProjectKind) {
+	printf("📦 Initializing local-ci for %s (%s project)\n", root, kind)
 
-	printf("📦 Initializing local-ci for %s\n", root)
-
-	if ws.IsSingle {
-		printf("  Single crate: %s\n", ws.Members[0])
-	} else {
-		printf("  Workspace with %d members\n", len(ws.Members))
-		for _, member := range ws.Members {
-			if !ws.IsExcluded(member) {
+	switch kind {
+	case ProjectKindTypeScript:
+		ws, err := DetectTypeScriptWorkspace(root)
+		if err != nil {
+			fatalf("Failed to detect workspace: %v", err)
+		}
+		if ws.IsSingle {
+			printf("  Single package: %s\n", ws.Members[0])
+		} else {
+			printf("  Workspace with %d members\n", len(ws.Members))
+			for _, member := range ws.Members {
 				printf("    ✓ %s\n", member)
-			} else {
-				printf("    ✗ %s (excluded)\n", member)
 			}
+		}
+		if err := SaveDefaultTypeScriptConfig(root); err != nil {
+			fatalf("Failed to save config: %v", err)
+		}
+
+	default:
+		ws, err := DetectWorkspace(root)
+		if err != nil {
+			fatalf("Failed to detect workspace: %v", err)
+		}
+		if ws.IsSingle {
+			printf("  Single crate: %s\n", ws.Members[0])
+		} else {
+			printf("  Workspace with %d members\n", len(ws.Members))
+			for _, member := range ws.Members {
+				if !ws.IsExcluded(member) {
+					printf("    ✓ %s\n", member)
+				} else {
+					printf("    ✗ %s (excluded)\n", member)
+				}
+			}
+		}
+		if err := SaveDefaultConfig(root, ws); err != nil {
+			fatalf("Failed to save config: %v", err)
 		}
 	}
 
-	// Create .local-ci.toml
-	if err := SaveDefaultConfig(root, ws); err != nil {
-		fatalf("Failed to save config: %v", err)
-	}
 	successf("✅ Created .local-ci.toml\n")
 
 	// Update .gitignore
