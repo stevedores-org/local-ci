@@ -82,6 +82,12 @@ func LoadConfig(root string, kind ProjectKind) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
 	}
 
+	// Set stage names from map keys (Name is toml:"-")
+	for name, stage := range cfg.Stages {
+		stage.Name = name
+		cfg.Stages[name] = stage
+	}
+
 	// Merge defaults for stages not specified
 	var defaults map[string]Stage
 	if kind == ProjectKindTypeScript {
