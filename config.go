@@ -11,25 +11,25 @@ import (
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache       CacheConfig       `toml:"cache"`
-	Stages      map[string]Stage  `toml:"stages"`
+	Cache        CacheConfig      `toml:"cache"`
+	Stages       map[string]Stage `toml:"stages"`
 	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace   WorkspaceConfig   `toml:"workspace"`
+	Workspace    WorkspaceConfig  `toml:"workspace"`
 }
 
 // CacheConfig defines caching behavior
 type CacheConfig struct {
-	SkipDirs       []string `toml:"skip_dirs"`
+	SkipDirs        []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
 }
 
 // StageConfig defines a CI stage
 type StageConfig struct {
-	Command              []string      `toml:"command"`
-	FixCommand           []string      `toml:"fix_command"`
-	Timeout              int           `toml:"timeout"` // seconds
-	Enabled              bool          `toml:"enabled"`
-	RespectWorkspaceExcludes bool      `toml:"respect_workspace_excludes"`
+	Command                  []string `toml:"command"`
+	FixCommand               []string `toml:"fix_command"`
+	Timeout                  int      `toml:"timeout"` // seconds
+	Enabled                  bool     `toml:"enabled"`
+	RespectWorkspaceExcludes bool     `toml:"respect_workspace_excludes"`
 }
 
 // DepsConfig defines system dependencies
@@ -49,8 +49,8 @@ func LoadConfig(root string) (*Config, error) {
 
 	cfg := &Config{
 		Cache: CacheConfig{
-			SkipDirs: []string{".git", "target", ".github", "scripts", ".claude"},
-			IncludePatterns: []string{"*.rs", "*.toml"},
+			SkipDirs:        []string{".git", "target", ".github", "scripts", ".claude"},
+			IncludePatterns: []string{"*.rs", "*.toml", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.json"},
 		},
 		Stages: defaultStages(),
 		Dependencies: DepsConfig{
@@ -100,18 +100,19 @@ func SaveDefaultConfig(root string, wsConfig *Workspace) error {
 	defaultConfig := `# local-ci configuration
 # See: https://github.com/stevedores-org/local-ci
 #
-# Core stages run by default: fmt, clippy, test
+# Core stages run by default: fmt, clippy, test (Rust)
 # Optional tool stages available below (requires installation):
 #   - deny: cargo-deny (security/license checking)
 #   - audit: cargo-audit (CVE vulnerability scanning)
 #   - machete: cargo-machete (unused dependencies)
 #   - taplo: taplo-cli (TOML formatting)
+#   - bun-install/typecheck-ts/lint-ts/test-ts: Bun + TypeScript/JS workflows
 
 [cache]
 # Directories to skip when computing source hash
 skip_dirs = [".git", "target", ".github", "scripts", ".claude", "node_modules"]
 # File patterns to include in hash
-include_patterns = ["*.rs", "*.toml"]
+include_patterns = ["*.rs", "*.toml", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.json"]
 
 [stages.fmt]
 command = ["cargo", "fmt", "--all", "--", "--check"]
@@ -158,6 +159,28 @@ enabled = false
 command = ["taplo", "format", "--check", "."]
 fix_command = ["taplo", "format", "."]
 timeout = 300
+enabled = false
+
+# Optional: Bun + TypeScript/JavaScript stages (uncomment to enable)
+# Install Bun with: brew install oven-sh/bun/bun
+[stages.bun-install]
+command = ["bun", "install", "--frozen-lockfile"]
+timeout = 300
+enabled = false
+
+[stages.typecheck-ts]
+command = ["bun", "x", "tsc", "--noEmit"]
+timeout = 300
+enabled = false
+
+[stages.lint-ts]
+command = ["bun", "run", "lint"]
+timeout = 300
+enabled = false
+
+[stages.test-ts]
+command = ["bun", "test"]
+timeout = 600
 enabled = false
 
 [dependencies]
@@ -245,6 +268,38 @@ func defaultStages() map[string]Stage {
 			Timeout: 300,
 			Enabled: false, // Requires taplo to be installed
 		},
+		"bun-install": {
+			Name:    "bun-install",
+			Cmd:     []string{"bun", "install", "--frozen-lockfile"},
+			FixCmd:  nil,
+			Check:   false,
+			Timeout: 300,
+			Enabled: false,
+		},
+		"typecheck-ts": {
+			Name:    "typecheck-ts",
+			Cmd:     []string{"bun", "x", "tsc", "--noEmit"},
+			FixCmd:  nil,
+			Check:   true,
+			Timeout: 300,
+			Enabled: false,
+		},
+		"lint-ts": {
+			Name:    "lint-ts",
+			Cmd:     []string{"bun", "run", "lint"},
+			FixCmd:  nil,
+			Check:   false,
+			Timeout: 300,
+			Enabled: false,
+		},
+		"test-ts": {
+			Name:    "test-ts",
+			Cmd:     []string{"bun", "test"},
+			FixCmd:  nil,
+			Check:   false,
+			Timeout: 600,
+			Enabled: false,
+		},
 	}
 }
 
@@ -253,10 +308,10 @@ func (c *Config) ToStageConfigs() map[string]StageConfig {
 	result := make(map[string]StageConfig)
 	for name, stage := range c.Stages {
 		result[name] = StageConfig{
-			Command:              stage.Cmd,
-			FixCommand:           stage.FixCmd,
-			Timeout:              stage.Timeout,
-			Enabled:              stage.Enabled,
+			Command:                  stage.Cmd,
+			FixCommand:               stage.FixCmd,
+			Timeout:                  stage.Timeout,
+			Enabled:                  stage.Enabled,
 			RespectWorkspaceExcludes: false,
 		}
 	}

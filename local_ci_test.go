@@ -93,8 +93,8 @@ func TestLoadConfigDefaults(t *testing.T) {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
 
-	if len(config.Stages) < 3 {
-		t.Errorf("Expected at least 3 stages, got %d", len(config.Stages))
+	if len(config.Stages) < 7 {
+		t.Errorf("Expected at least 7 stages, got %d", len(config.Stages))
 	}
 
 	// Verify default stages exist
@@ -102,6 +102,19 @@ func TestLoadConfigDefaults(t *testing.T) {
 	for _, stageName := range defaultStages {
 		if _, exists := config.Stages[stageName]; !exists {
 			t.Errorf("Missing default stage: %s", stageName)
+		}
+	}
+
+	// Verify TypeScript/Bun stages exist
+	bunStages := []string{"bun-install", "typecheck-ts", "lint-ts", "test-ts"}
+	for _, stageName := range bunStages {
+		stage, exists := config.Stages[stageName]
+		if !exists {
+			t.Errorf("Missing Bun/TS stage: %s", stageName)
+			continue
+		}
+		if len(stage.Cmd) == 0 || stage.Cmd[0] != "bun" {
+			t.Errorf("Expected stage %s to use bun command, got %v", stageName, stage.Cmd)
 		}
 	}
 
@@ -333,6 +346,9 @@ func TestInitCreateConfig(t *testing.T) {
 	data, _ := os.ReadFile(configPath)
 	if !strings.Contains(string(data), "[stages.fmt]") {
 		t.Error("Config should contain stage definitions")
+	}
+	if !strings.Contains(string(data), "[stages.typecheck-ts]") {
+		t.Error("Config should contain TypeScript stage definitions")
 	}
 }
 

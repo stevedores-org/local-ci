@@ -1,7 +1,7 @@
-// local-ci — Local CI runner for Rust workspaces.
+// local-ci — Local CI runner for Rust and TypeScript/Bun projects.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust projects. Supports file-hash caching, configuration files, and colored output.
+// for Rust and TypeScript/Bun projects. Supports file-hash caching, configuration files, and colored output.
 //
 // Usage:
 //
@@ -83,7 +83,7 @@ func main() {
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust workspaces\n\n", version)
+		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust + TypeScript/Bun projects\n\n", version)
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml in current project\n\n")
@@ -92,6 +92,10 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  clippy    Linter (cargo clippy -D warnings)\n")
 		fmt.Fprintf(os.Stderr, "  test      Tests (cargo test --workspace)\n")
 		fmt.Fprintf(os.Stderr, "  check     Compile check (cargo check)\n\n")
+		fmt.Fprintf(os.Stderr, "  bun-install  Install JS/TS deps (bun install --frozen-lockfile)\n")
+		fmt.Fprintf(os.Stderr, "  typecheck-ts TypeScript check (bun x tsc --noEmit)\n")
+		fmt.Fprintf(os.Stderr, "  lint-ts      Lint JS/TS project (bun run lint)\n")
+		fmt.Fprintf(os.Stderr, "  test-ts      JS/TS tests (bun test)\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
@@ -100,10 +104,6 @@ func main() {
 	if *flagVersion {
 		fmt.Printf("local-ci v%s\n", version)
 		return
-	}
-
-	if err := requireCommand("cargo"); err != nil {
-		fatalf("%v", err)
 	}
 
 	cwd, err := os.Getwd()
@@ -180,6 +180,10 @@ func main() {
 				break
 			}
 		}
+	}
+
+	if err := validateStageCommands(stages); err != nil {
+		fatalf("%v", err)
 	}
 
 	// Compute source hash
@@ -373,6 +377,26 @@ func requireCommand(name string) error {
 	return nil
 }
 
+func validateStageCommands(stages []Stage) error {
+	seen := make(map[string]bool)
+	for _, stage := range stages {
+		if len(stage.Cmd) == 0 {
+			return fmt.Errorf("stage %q has empty command", stage.Name)
+		}
+
+		cmd := stage.Cmd[0]
+		if seen[cmd] {
+			continue
+		}
+
+		if err := requireCommand(cmd); err != nil {
+			return fmt.Errorf("stage %q requires command %q: %w", stage.Name, cmd, err)
+		}
+		seen[cmd] = true
+	}
+	return nil
+}
+
 func toJSONResults(results []Result) []ResultJSON {
 	out := make([]ResultJSON, 0, len(results))
 	for _, r := range results {
@@ -392,7 +416,7 @@ func toJSONResults(results []Result) []ResultJSON {
 	return out
 }
 
-// computeSourceHash computes MD5 hash of Rust source files
+// computeSourceHash computes MD5 hash of source files configured by include_patterns
 func computeSourceHash(root string, config *Config, ws *Workspace) (string, error) {
 	h := md5.New()
 

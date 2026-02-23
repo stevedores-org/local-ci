@@ -1,6 +1,6 @@
 # local-ci
 
-A lightweight, cacheable local CI runner for Rust workspaces. Mirrors GitHub Actions with file-hash caching and supports optional cargo ecosystem tools.
+A lightweight, cacheable local CI runner for Rust and TypeScript/Bun projects. Mirrors GitHub Actions with file-hash caching and supports optional ecosystem tools.
 
 ## Features
 
@@ -9,6 +9,7 @@ A lightweight, cacheable local CI runner for Rust workspaces. Mirrors GitHub Act
 - 📦 **Minimal**: Single binary with zero dependencies (except TOML parsing)
 - 🔧 **Flexible**: Run specific stages or all stages
 - 🛠️ **Tool Support**: Integrates with cargo ecosystem (deny, audit, machete, taplo)
+- 🧩 **TS/Bun Support**: Optional Bun-powered TypeScript and JavaScript stages
 - 📂 **Workspace Aware**: Auto-detects workspace structure and excludes
 - ⚡ **Config-Driven**: `.local-ci.toml` for per-project customization
 - 🪝 **Git Hooks**: Optional pre-commit hook generation
@@ -34,10 +35,10 @@ go install github.com/stevedores-org/local-ci@latest
 
 ## Quick Start
 
-Initialize local-ci in your Rust project:
+Initialize local-ci in your project:
 
 ```bash
-cd your-rust-project
+cd your-project
 local-ci init
 ```
 
@@ -69,7 +70,7 @@ go build -o local-ci
 ### Basic Commands
 
 ```bash
-# Run default stages (fmt, clippy, test)
+# Run default enabled stages (fmt, clippy, test)
 local-ci
 
 # Run specific stages
@@ -181,6 +182,36 @@ local-ci --fix taplo
 local-ci taplo
 ```
 
+## Optional Bun + TypeScript Stages
+
+Install Bun:
+
+```bash
+brew install oven-sh/bun/bun
+```
+
+Enable stages in `.local-ci.toml`:
+
+```toml
+[stages.bun-install]
+enabled = true
+
+[stages.typecheck-ts]
+enabled = true
+
+[stages.lint-ts]
+enabled = true
+
+[stages.test-ts]
+enabled = true
+```
+
+Run them:
+
+```bash
+local-ci bun-install typecheck-ts lint-ts test-ts
+```
+
 ## Configuration
 
 ### .local-ci.toml
@@ -192,7 +223,7 @@ Each project can have a `.local-ci.toml` configuration file:
 # Directories to skip when computing source hash
 skip_dirs = [".git", "target", ".github", "scripts", ".claude"]
 # File patterns to include in hash
-include_patterns = ["*.rs", "*.toml"]
+include_patterns = ["*.rs", "*.toml", "*.ts", "*.tsx", "*.js", "*.jsx", "*.mjs", "*.cjs", "*.json"]
 
 [stages.fmt]
 command = ["cargo", "fmt", "--all", "--", "--check"]
@@ -209,6 +240,17 @@ enabled = true
 command = ["cargo", "test", "--workspace"]
 timeout = 1200
 enabled = true
+
+# Optional Bun/TypeScript stages
+[stages.bun-install]
+command = ["bun", "install", "--frozen-lockfile"]
+timeout = 300
+enabled = false
+
+[stages.typecheck-ts]
+command = ["bun", "x", "tsc", "--noEmit"]
+timeout = 300
+enabled = false
 
 # Optional tool stages...
 [stages.deny]
@@ -231,7 +273,7 @@ exclude = []
 If `.local-ci.toml` doesn't exist, local-ci uses sensible defaults:
 - Runs: fmt, clippy, test
 - Skips: .git, target, .github, scripts, .claude
-- Hashes: *.rs, *.toml files
+- Hashes: *.rs, *.toml, *.ts, *.tsx, *.js, *.jsx, *.mjs, *.cjs, *.json files
 - Timeout: 30s default (per-stage configurable)
 
 Unknown stage names now fail fast (instead of being silently ignored).
@@ -241,7 +283,7 @@ Unknown stage names now fail fast (instead of being silently ignored).
 Cache is stored in `.local-ci-cache` (added to `.gitignore` by `local-ci init`).
 
 **How it works:**
-1. Compute MD5 hash of all Rust files in workspace
+1. Compute MD5 hash of files matching configured include patterns
 2. Skip stages if source hash matches cached hash
 3. Update cache when stage succeeds
 
