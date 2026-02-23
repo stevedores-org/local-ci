@@ -43,23 +43,29 @@ type WorkspaceConfig struct {
 	Exclude []string `toml:"exclude"`
 }
 
-// LoadConfig loads configuration from .local-ci.toml or returns defaults
-func LoadConfig(root string) (*Config, error) {
+// LoadConfig loads configuration from .local-ci.toml or returns defaults.
+// The kind parameter selects Rust or TypeScript defaults when no config file exists.
+func LoadConfig(root string, kind ProjectKind) (*Config, error) {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
-	cfg := &Config{
-		Cache: CacheConfig{
-			SkipDirs: []string{".git", "target", ".github", "scripts", ".claude"},
-			IncludePatterns: []string{"*.rs", "*.toml"},
-		},
-		Stages: defaultStages(),
-		Dependencies: DepsConfig{
-			Required: []string{},
-			Optional: []string{},
-		},
-		Workspace: WorkspaceConfig{
-			Exclude: []string{},
-		},
+	var cfg *Config
+	if kind == ProjectKindTypeScript {
+		cfg = defaultTypeScriptConfig()
+	} else {
+		cfg = &Config{
+			Cache: CacheConfig{
+				SkipDirs:        []string{".git", "target", ".github", "scripts", ".claude"},
+				IncludePatterns: []string{"*.rs", "*.toml"},
+			},
+			Stages: defaultStages(),
+			Dependencies: DepsConfig{
+				Required: []string{},
+				Optional: []string{},
+			},
+			Workspace: WorkspaceConfig{
+				Exclude: []string{},
+			},
+		}
 	}
 
 	// Try to load from file
@@ -77,7 +83,12 @@ func LoadConfig(root string) (*Config, error) {
 	}
 
 	// Merge defaults for stages not specified
-	defaults := defaultStages()
+	var defaults map[string]Stage
+	if kind == ProjectKindTypeScript {
+		defaults = defaultTypeScriptStages()
+	} else {
+		defaults = defaultStages()
+	}
 	for name, defaultStage := range defaults {
 		if _, exists := cfg.Stages[name]; !exists {
 			cfg.Stages[name] = defaultStage

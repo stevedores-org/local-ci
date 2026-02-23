@@ -1,8 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -10,7 +13,7 @@ func TestSelectStagesFromConfig(t *testing.T) {
 	dir := createTestWorkspace(t)
 	defer os.RemoveAll(dir)
 
-	config, err := LoadConfig(dir)
+	config, err := LoadConfig(dir, ProjectKindRust)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -35,7 +38,7 @@ func TestSelectStagesUnknown(t *testing.T) {
 	dir := createTestWorkspace(t)
 	defer os.RemoveAll(dir)
 
-	config, err := LoadConfig(dir)
+	config, err := LoadConfig(dir, ProjectKindRust)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -79,7 +82,7 @@ func TestComputeSourceHashIgnoresTarget(t *testing.T) {
 		t.Fatalf("write target failed: %v", err)
 	}
 
-	config, _ := LoadConfig(dir)
+	config, _ := LoadConfig(dir, ProjectKindRust)
 	ws, _ := DetectWorkspace(dir)
 
 	h1, err := computeSourceHash(dir, config, ws)
@@ -107,5 +110,51 @@ func TestRequireCommand(t *testing.T) {
 	}
 	if err := requireCommand("nonexistent-tool-xyz"); err == nil {
 		t.Fatal("expected error for nonexistent command")
+	}
+}
+
+func TestValidateStageCommands(t *testing.T) {
+	stageWithGo := Stage{
+		Name: "go-version",
+		Cmd:  []string{"go", "version"},
+	}
+
+	if err := validateStageCommands([]Stage{stageWithGo}); err != nil {
+		t.Fatalf("expected go command to be valid: %v", err)
+	}
+}
+
+func TestValidateStageCommandsMissingCommand(t *testing.T) {
+	tool := "definitely-missing-local-ci-tool-xyz"
+	if _, err := exec.LookPath(tool); err == nil {
+		t.Skipf("expected %q to be missing from PATH for this test", tool)
+	}
+
+	stage := Stage{
+		Name: "missing-tool",
+		Cmd:  []string{tool, "run"},
+	}
+
+	err := validateStageCommands([]Stage{stage})
+	if err == nil {
+		t.Fatal("expected error for missing command")
+	}
+	if !strings.Contains(err.Error(), fmt.Sprintf("stage %q", stage.Name)) {
+		t.Fatalf("expected stage name in error, got: %v", err)
+	}
+	if !strings.Contains(err.Error(), tool) {
+		t.Fatalf("expected missing tool in error, got: %v", err)
+	}
+}
+
+func TestValidateStageCommandsEmptyCmd(t *testing.T) {
+	stage := Stage{
+		Name: "empty",
+		Cmd:  []string{},
+	}
+
+	err := validateStageCommands([]Stage{stage})
+	if err == nil {
+		t.Fatal("expected error for empty command")
 	}
 }
