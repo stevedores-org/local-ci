@@ -43,24 +43,19 @@ type WorkspaceConfig struct {
 	Exclude []string `toml:"exclude"`
 }
 
-// LoadConfig loads configuration from .local-ci.toml or returns defaults
-func LoadConfig(root string) (*Config, error) {
+// LoadConfig loads configuration from .local-ci.toml or returns defaults.
+// The kind parameter determines which default stages/cache config to use
+// when no config file exists.
+func LoadConfig(root string, kind ...ProjectKind) (*Config, error) {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
-	cfg := &Config{
-		Cache: CacheConfig{
-			SkipDirs: []string{".git", "target", ".github", "scripts", ".claude"},
-			IncludePatterns: []string{"*.rs", "*.toml"},
-		},
-		Stages: defaultStages(),
-		Dependencies: DepsConfig{
-			Required: []string{},
-			Optional: []string{},
-		},
-		Workspace: WorkspaceConfig{
-			Exclude: []string{},
-		},
+	// Determine project kind (default to Rust for backwards compat)
+	projectKind := ProjectRust
+	if len(kind) > 0 {
+		projectKind = kind[0]
 	}
+
+	cfg := defaultConfigForKind(projectKind)
 
 	// Try to load from file
 	data, err := os.ReadFile(configPath)
@@ -77,9 +72,10 @@ func LoadConfig(root string) (*Config, error) {
 	}
 
 	// Merge defaults for stages not specified
-	defaults := defaultStages()
-	for name, defaultStage := range defaults {
-		if _, exists := cfg.Stages[name]; !exists {
+	defaults := cfg.Stages // already set from file
+	baseDefaults := defaultStagesForKind(projectKind)
+	for name, defaultStage := range baseDefaults {
+		if _, exists := defaults[name]; !exists {
 			cfg.Stages[name] = defaultStage
 		}
 	}
@@ -87,8 +83,50 @@ func LoadConfig(root string) (*Config, error) {
 	return cfg, nil
 }
 
-// SaveDefaultConfig writes a default .local-ci.toml file
-func SaveDefaultConfig(root string, wsConfig *Workspace) error {
+// defaultConfigForKind returns a full default Config for a given project kind.
+func defaultConfigForKind(kind ProjectKind) *Config {
+	switch kind {
+	case ProjectTypeScript:
+		return &Config{
+			Cache:  defaultTSCacheConfig(),
+			Stages: defaultTSStages(),
+			Dependencies: DepsConfig{
+				Required: []string{},
+				Optional: []string{},
+			},
+			Workspace: WorkspaceConfig{
+				Exclude: []string{},
+			},
+		}
+	default: // ProjectRust and ProjectUnknown
+		return &Config{
+			Cache: CacheConfig{
+				SkipDirs:        []string{".git", "target", ".github", "scripts", ".claude"},
+				IncludePatterns: []string{"*.rs", "*.toml"},
+			},
+			Stages: defaultStages(),
+			Dependencies: DepsConfig{
+				Required: []string{},
+				Optional: []string{},
+			},
+			Workspace: WorkspaceConfig{
+				Exclude: []string{},
+			},
+		}
+	}
+}
+
+// defaultStagesForKind returns default stages for the given project kind.
+func defaultStagesForKind(kind ProjectKind) map[string]Stage {
+	if kind == ProjectTypeScript {
+		return defaultTSStages()
+	}
+	return defaultStages()
+}
+
+// SaveDefaultConfig writes a default .local-ci.toml file.
+// For TypeScript projects, pass kind=ProjectTypeScript to get TS-specific defaults.
+func SaveDefaultConfig(root string, wsConfig *Workspace, kind ...ProjectKind) error {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
 	// Check if config already exists
@@ -96,7 +134,20 @@ func SaveDefaultConfig(root string, wsConfig *Workspace) error {
 		return fmt.Errorf("config file already exists at %s", configPath)
 	}
 
-	// Write default config as text (template-based)
+	// Use TS template if requested
+	projectKind := ProjectRust
+	if len(kind) > 0 {
+		projectKind = kind[0]
+	}
+	if projectKind == ProjectTypeScript {
+		template := defaultTSConfigTemplate()
+		if err := os.WriteFile(configPath, []byte(template), 0644); err != nil {
+			return fmt.Errorf("failed to write config file: %w", err)
+		}
+		return nil
+	}
+
+	// Rust default config
 	defaultConfig := `# local-ci configuration
 # See: https://github.com/stevedores-org/local-ci
 #

@@ -1,15 +1,16 @@
-// local-ci — Local CI runner for Rust workspaces.
+// local-ci — Local CI runner for Rust and TypeScript workspaces.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust projects. Supports file-hash caching, configuration files, and colored output.
+// for Rust and TypeScript/Bun projects. Auto-detects project type.
+// Supports file-hash caching, configuration files, and colored output.
 //
 // Usage:
 //
-//	local-ci                Run default stages (fmt, clippy, test)
+//	local-ci                Run default stages (auto-detected)
 //	local-ci fmt clippy     Run specific stages
 //	local-ci init           Initialize .local-ci.toml in current project
 //	local-ci --no-cache     Disable caching, force all stages
-//	local-ci --fix          Auto-fix formatting (cargo fmt without --check)
+//	local-ci --fix          Auto-fix issues (stages with fix_command)
 //	local-ci --verbose      Show detailed output
 //	local-ci --list         List available stages
 //	local-ci --version      Print version
@@ -31,7 +32,7 @@ import (
 	"time"
 )
 
-var version = "0.2.0"
+var version = "0.3.0"
 
 type Stage struct {
 	Name    string
@@ -74,7 +75,7 @@ func main() {
 	var (
 		flagNoCache  = flag.Bool("no-cache", false, "Disable file hash cache")
 		flagVerbose  = flag.Bool("verbose", false, "Show detailed output")
-		flagFix      = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagFix      = flag.Bool("fix", false, "Auto-fix issues (any stage with fix_command)")
 		flagFailFast = flag.Bool("fail-fast", false, "Stop on first failed stage")
 		flagJSON     = flag.Bool("json", false, "Emit machine-readable JSON report")
 		flagList     = flag.Bool("list", false, "List available stages")
@@ -83,15 +84,10 @@ func main() {
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust workspaces\n\n", version)
+		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust & TypeScript workspaces\n\n", version)
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml in current project\n\n")
-		fmt.Fprintf(os.Stderr, "Stages:\n")
-		fmt.Fprintf(os.Stderr, "  fmt       Format check (cargo fmt --check)\n")
-		fmt.Fprintf(os.Stderr, "  clippy    Linter (cargo clippy -D warnings)\n")
-		fmt.Fprintf(os.Stderr, "  test      Tests (cargo test --workspace)\n")
-		fmt.Fprintf(os.Stderr, "  check     Compile check (cargo check)\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
@@ -102,35 +98,38 @@ func main() {
 		return
 	}
 
-	if err := requireCommand("cargo"); err != nil {
-		fatalf("%v", err)
-	}
-
 	cwd, err := os.Getwd()
 	if err != nil {
 		fatalf("Cannot get working directory: %v", err)
 	}
 
+	// Auto-detect project kind
+	kind := DetectProjectKind(cwd)
+
 	// Handle init subcommand
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "init" {
-		cmdInit(cwd)
+		cmdInit(cwd, kind)
 		return
 	}
 
-	// Load configuration
-	config, err := LoadConfig(cwd)
+	// Load configuration with project kind
+	config, err := LoadConfig(cwd, kind)
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
 	}
 
-	// Detect workspace
-	ws, err := DetectWorkspace(cwd)
-	if err != nil && *flagVerbose {
-		warnf("Workspace detection failed: %v", err)
+	// Detect workspace based on project kind
+	var ws *Workspace
+	if kind == ProjectRust {
+		ws, err = DetectWorkspace(cwd)
+		if err != nil && *flagVerbose {
+			warnf("Workspace detection failed: %v", err)
+		}
 	}
 
 	if *flagList {
+		fmt.Printf("Project: %s\n", kind)
 		fmt.Printf("Available stages:\n")
 		for name := range config.Stages {
 			stage := config.Stages[name]
@@ -171,15 +170,19 @@ func main() {
 		}
 	}
 
-	// If --fix, modify fmt stage
+	// If --fix, swap in fix commands for all stages that have them
 	if *flagFix {
 		for i := range stages {
-			if stages[i].Name == "fmt" && len(stages[i].FixCmd) > 0 {
+			if len(stages[i].FixCmd) > 0 {
 				stages[i].Cmd = stages[i].FixCmd
 				stages[i].Check = false
-				break
 			}
 		}
+	}
+
+	// Validate that required commands exist for the selected stages
+	if err := validateStageCommands(stages); err != nil {
+		fatalf("%v", err)
 	}
 
 	// Compute source hash
@@ -203,7 +206,7 @@ func main() {
 	start := time.Now()
 
 	if !*flagJSON {
-		printf("🚀 Running local CI pipeline...\n\n")
+		printf("🚀 Running local CI pipeline (%s)...\n\n", kind)
 	}
 
 	for _, stage := range stages {
@@ -366,6 +369,26 @@ func main() {
 	}
 }
 
+// validateStageCommands checks that the base command for each stage exists in PATH.
+// This replaces the old global requireCommand("cargo") with per-stage validation.
+func validateStageCommands(stages []Stage) error {
+	checked := make(map[string]bool)
+	for _, stage := range stages {
+		if len(stage.Cmd) == 0 {
+			continue
+		}
+		bin := stage.Cmd[0]
+		if checked[bin] {
+			continue
+		}
+		if _, err := exec.LookPath(bin); err != nil {
+			return fmt.Errorf("stage %q requires %q but it was not found in PATH", stage.Name, bin)
+		}
+		checked[bin] = true
+	}
+	return nil
+}
+
 func requireCommand(name string) error {
 	if _, err := exec.LookPath(name); err != nil {
 		return fmt.Errorf("required command %q not found in PATH", name)
@@ -392,7 +415,7 @@ func toJSONResults(results []Result) []ResultJSON {
 	return out
 }
 
-// computeSourceHash computes MD5 hash of Rust source files
+// computeSourceHash computes MD5 hash of source files
 func computeSourceHash(root string, config *Config, ws *Workspace) (string, error) {
 	h := md5.New()
 
@@ -500,14 +523,26 @@ func saveCache(cache map[string]string, root string) error {
 }
 
 // cmdInit initializes a new .local-ci.toml configuration
-func cmdInit(root string) {
+func cmdInit(root string, kind ProjectKind) {
+	printf("📦 Initializing local-ci for %s (%s project)\n", root, kind)
+
+	switch kind {
+	case ProjectTypeScript:
+		cmdInitTS(root)
+	case ProjectRust:
+		cmdInitRust(root)
+	default:
+		fatalf("Could not detect project type. Expected Cargo.toml (Rust) or package.json (TypeScript) in %s", root)
+	}
+}
+
+// cmdInitRust initializes for a Rust project
+func cmdInitRust(root string) {
 	// Detect workspace
 	ws, err := DetectWorkspace(root)
 	if err != nil {
 		fatalf("Failed to detect workspace: %v", err)
 	}
-
-	printf("📦 Initializing local-ci for %s\n", root)
 
 	if ws.IsSingle {
 		printf("  Single crate: %s\n", ws.Members[0])
@@ -523,7 +558,7 @@ func cmdInit(root string) {
 	}
 
 	// Create .local-ci.toml
-	if err := SaveDefaultConfig(root, ws); err != nil {
+	if err := SaveDefaultConfig(root, ws, ProjectRust); err != nil {
 		fatalf("Failed to save config: %v", err)
 	}
 	successf("✅ Created .local-ci.toml\n")
@@ -550,6 +585,52 @@ func cmdInit(root string) {
 	printf("     - cargo install cargo-deny\n")
 	printf("     - cargo install cargo-audit\n")
 	printf("     - cargo install cargo-machete\n")
+}
+
+// cmdInitTS initializes for a TypeScript project
+func cmdInitTS(root string) {
+	// Detect workspace
+	tsWs, err := DetectTSWorkspace(root)
+	if err != nil {
+		fatalf("Failed to detect workspace: %v", err)
+	}
+
+	if tsWs.IsSingle {
+		printf("  Single package\n")
+	} else {
+		printf("  Monorepo with %d packages\n", len(tsWs.Members))
+		for _, member := range tsWs.Members {
+			printf("    ✓ %s\n", member)
+		}
+	}
+
+	// Create .local-ci.toml with TS defaults
+	if err := SaveDefaultConfig(root, nil, ProjectTypeScript); err != nil {
+		fatalf("Failed to save config: %v", err)
+	}
+	successf("✅ Created .local-ci.toml\n")
+
+	// Update .gitignore
+	gitignorePath := filepath.Join(root, ".gitignore")
+	updateGitignore(gitignorePath, ".local-ci-cache")
+	successf("✅ Updated .gitignore\n")
+
+	// Try to create pre-commit hook if .git exists
+	gitDir := filepath.Join(root, ".git")
+	if _, err := os.Stat(gitDir); err == nil {
+		if err := CreatePreCommitHook(root); err == nil {
+			successf("✅ Created pre-commit hook\n")
+		} else if !os.IsNotExist(err) {
+			warnf("Could not create pre-commit hook: %v\n", err)
+		}
+	}
+
+	printf("\n💡 Next steps:\n")
+	printf("  1. Run 'local-ci' to test the setup\n")
+	printf("  2. Customize .local-ci.toml as needed\n")
+	if !HasBun() {
+		printf("  3. Install bun: curl -fsSL https://bun.sh/install | bash\n")
+	}
 }
 
 // updateGitignore adds an entry to .gitignore if not already present

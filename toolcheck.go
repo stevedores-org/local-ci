@@ -51,6 +51,25 @@ var cargoTools = []Tool{
 	},
 }
 
+var tsTools = []Tool{
+	{
+		Name:       "bun",
+		Command:    "bun",
+		CheckArgs:  []string{"--version"},
+		InstallCmd: "curl -fsSL https://bun.sh/install | bash",
+		ToolType:   "binary",
+		Optional:   false,
+	},
+	{
+		Name:       "node",
+		Command:    "node",
+		CheckArgs:  []string{"--version"},
+		InstallCmd: "https://nodejs.org/en/download/",
+		ToolType:   "system",
+		Optional:   true,
+	},
+}
+
 var systemTools = []Tool{
 	{
 		Name:       "protoc",
@@ -104,6 +123,12 @@ func CheckAllTools() map[string]*ToolCheck {
 		results[tool.Name] = check
 	}
 
+	// Check TS tools
+	for _, tool := range tsTools {
+		check := CheckToolInstalled(&tool)
+		results[tool.Name] = check
+	}
+
 	// Check system tools
 	for _, tool := range systemTools {
 		check := CheckToolInstalled(&tool)
@@ -130,8 +155,9 @@ func GetMissingTools() []string {
 func GetMissingToolsWithHints() map[string]string {
 	hints := make(map[string]string)
 
-	allTools := make([]Tool, 0, len(cargoTools)+len(systemTools))
+	allTools := make([]Tool, 0, len(cargoTools)+len(tsTools)+len(systemTools))
 	allTools = append(allTools, cargoTools...)
+	allTools = append(allTools, tsTools...)
 	allTools = append(allTools, systemTools...)
 	for _, tool := range allTools {
 		if tool.Optional && !CheckToolInstalled(&tool).Found {
@@ -153,8 +179,9 @@ func ToolIsAvailable(toolName string) bool {
 
 // getToolByName finds a tool by name
 func getToolByName(name string) *Tool {
-	allTools := make([]Tool, 0, len(cargoTools)+len(systemTools))
+	allTools := make([]Tool, 0, len(cargoTools)+len(tsTools)+len(systemTools))
 	allTools = append(allTools, cargoTools...)
+	allTools = append(allTools, tsTools...)
 	allTools = append(allTools, systemTools...)
 	for _, tool := range allTools {
 		if strings.EqualFold(tool.Name, name) {
