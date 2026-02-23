@@ -128,7 +128,7 @@ func TestFixFlagSwapsFmtCommand(t *testing.T) {
 
 	// Simulate --fix behavior from main.go
 	for i := range stages {
-		if stages[i].Name == "fmt" && len(stages[i].FixCmd) > 0 {
+		if len(stages[i].FixCmd) > 0 {
 			stages[i].Cmd = stages[i].FixCmd
 			stages[i].Check = false
 		}
@@ -160,7 +160,7 @@ func TestFixFlagNoFixCmd(t *testing.T) {
 
 	// Simulate --fix — should not modify stages without FixCmd
 	for i := range stages {
-		if stages[i].Name == "fmt" && len(stages[i].FixCmd) > 0 {
+		if len(stages[i].FixCmd) > 0 {
 			stages[i].Cmd = stages[i].FixCmd
 			stages[i].Check = false
 		}

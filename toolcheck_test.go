@@ -121,3 +121,29 @@ func TestSystemToolsHaveRequiredFields(t *testing.T) {
 		}
 	}
 }
+
+func TestBunToolsHaveRequiredFields(t *testing.T) {
+	for _, tool := range bunTools {
+		if tool.Name == "" {
+			t.Error("tool name should not be empty")
+		}
+		if tool.Command == "" {
+			t.Errorf("tool %q command should not be empty", tool.Name)
+		}
+		if tool.InstallCmd == "" {
+			t.Errorf("tool %q install command should not be empty", tool.Name)
+		}
+	}
+}
+
+func TestGetMissingToolsForKind(t *testing.T) {
+	rustHints := GetMissingToolsWithHints(ProjectKindRust)
+	if rustHints == nil {
+		t.Error("should return non-nil map for Rust")
+	}
+
+	tsHints := GetMissingToolsWithHints(ProjectKindTypeScript)
+	if tsHints == nil {
+		t.Error("should return non-nil map for TypeScript")
+	}
+}
