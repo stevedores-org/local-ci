@@ -51,6 +51,17 @@ var cargoTools = []Tool{
 	},
 }
 
+var bunTools = []Tool{
+	{
+		Name:       "bun",
+		Command:    "bun",
+		CheckArgs:  []string{"--version"},
+		InstallCmd: "curl -fsSL https://bun.sh/install | bash",
+		ToolType:   "binary",
+		Optional:   false,
+	},
+}
+
 var systemTools = []Tool{
 	{
 		Name:       "protoc",
@@ -126,14 +137,20 @@ func GetMissingTools() []string {
 	return missing
 }
 
-// GetMissingToolsWithHints returns missing tools with installation hints
-func GetMissingToolsWithHints() map[string]string {
+// GetMissingToolsWithHints returns missing tools with installation hints for the given project kind.
+func GetMissingToolsWithHints(kind ProjectKind) map[string]string {
 	hints := make(map[string]string)
 
-	allTools := make([]Tool, 0, len(cargoTools)+len(systemTools))
-	allTools = append(allTools, cargoTools...)
-	allTools = append(allTools, systemTools...)
-	for _, tool := range allTools {
+	var tools []Tool
+	switch kind {
+	case ProjectKindTypeScript:
+		tools = append(tools, bunTools...)
+	default:
+		tools = append(tools, cargoTools...)
+	}
+	tools = append(tools, systemTools...)
+
+	for _, tool := range tools {
 		if tool.Optional && !CheckToolInstalled(&tool).Found {
 			hints[tool.Name] = tool.InstallCmd
 		}
