@@ -30,20 +30,23 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
 var version = "0.2.0"
 
 type Stage struct {
-	Name    string   `toml:"-"`
-	Cmd     []string `toml:"command"`
-	FixCmd  []string `toml:"fix_command"` // command to run with --fix flag
-	Check   bool     `toml:"check"`       // true if this is a --check command
-	Timeout int      `toml:"timeout"`     // in seconds
-	Enabled bool     `toml:"enabled"`
+	Name      string   `toml:"-"`
+	Cmd       []string `toml:"command"`
+	FixCmd    []string `toml:"fix_command"`  // command to run with --fix flag
+	Check     bool     `toml:"check"`        // true if this is a --check command
+	Timeout   int      `toml:"timeout"`      // in seconds
+	Enabled   bool     `toml:"enabled"`
+	DependsOn string   `toml:"depends_on"`   // stage that must complete first
 }
 
 type Result struct {
@@ -86,6 +89,7 @@ func main() {
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
 		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
 		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
+		flagParallel = flag.Int("j", 1, "Run independent stages in parallel (number of concurrent stages)")
 	)
 
 	flag.Usage = func() {
@@ -257,63 +261,38 @@ func main() {
 		}
 	}
 
-	for _, stage := range stages {
+	// Determine parallelism
+	parallelism := *flagParallel
+	if parallelism <= 0 {
+		parallelism = runtime.NumCPU()
+	}
+
+	// runSingleStage executes one stage and returns its result
+	runSingleStage := func(stage Stage) Result {
 		stageStart := time.Now()
 		cmdStr := strings.Join(stage.Cmd, " ")
-		stageCacheKey := sourceHash + "|" + cmdStr
-
-		// Check cache
-		if !*flagNoCache && cache[stage.Name] == stageCacheKey {
-			if *flagVerbose && !*flagJSON {
-				printf("✓ %s (cached)\n", stage.Name)
-			}
-			results = append(results, Result{
-				Name:     stage.Name,
-				Command:  cmdStr,
-				Status:   "pass",
-				CacheHit: true,
-				Duration: 0,
-			})
-			continue
-		}
-
-		// Print stage header
-		if !*flagJSON {
-			printf("::group::%s\n", stage.Name)
-			if *flagVerbose {
-				printf("$ %s\n", cmdStr)
-			}
-		}
 
 		var result Result
-
-		// Execute stage (local or remote)
 		if remoteExec != nil {
-			// Remote execution
 			result = remoteExec.ExecuteStage(stage)
 		} else {
-			// Local execution
 			timeout := time.Duration(stage.Timeout) * time.Second
 			if timeout == 0 {
 				timeout = 30 * time.Second
 			}
-
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
 			cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
 			var out bytes.Buffer
 			cmd.Stdout = &out
 			cmd.Stderr = &out
 			cmd.Dir = cwd
-
 			err := cmd.Run()
 			cancel()
-			duration := time.Since(stageStart)
-
 			result = Result{
 				Name:     stage.Name,
 				Command:  cmdStr,
 				Status:   "pass",
-				Duration: duration,
+				Duration: time.Since(stageStart),
 				Output:   out.String(),
 			}
 			if err != nil {
@@ -321,31 +300,143 @@ func main() {
 				result.Error = err
 			}
 		}
+		return result
+	}
 
-		// Post-process and output result
-		if result.Status == "fail" {
-			if !*flagJSON {
-				if result.Output != "" {
-					printf("%s\n", result.Output)
+	// Group stages into dependency waves for parallel execution.
+	// A wave is a set of stages whose dependencies have all completed.
+	completed := make(map[string]bool)
+	failed := false
+
+	for len(completed) < len(stages) && !failed {
+		// Find stages ready to run (dependencies satisfied, not yet completed)
+		var wave []Stage
+		for _, stage := range stages {
+			if completed[stage.Name] {
+				continue
+			}
+			if stage.DependsOn == "" || completed[stage.DependsOn] {
+				wave = append(wave, stage)
+			}
+		}
+		if len(wave) == 0 {
+			// Remaining stages have unsatisfied dependencies (cycle or missing dep)
+			break
+		}
+
+		// Execute wave: parallel if -j > 1, sequential otherwise
+		if parallelism > 1 && len(wave) > 1 {
+			sem := make(chan struct{}, parallelism)
+			var mu sync.Mutex
+			var wg sync.WaitGroup
+
+			for _, stage := range wave {
+				cmdStr := strings.Join(stage.Cmd, " ")
+				stageCacheKey := sourceHash + "|" + cmdStr
+
+				// Check cache
+				if !*flagNoCache && cache[stage.Name] == stageCacheKey {
+					mu.Lock()
+					if *flagVerbose && !*flagJSON {
+						printf("✓ %s (cached)\n", stage.Name)
+					}
+					results = append(results, Result{
+						Name: stage.Name, Command: cmdStr,
+						Status: "pass", CacheHit: true,
+					})
+					completed[stage.Name] = true
+					mu.Unlock()
+					continue
 				}
-				printf("::endgroup::\n")
-				printf("✗ %s (failed)\n", result.Name)
+
+				wg.Add(1)
+				go func(s Stage, cacheKey string) {
+					defer wg.Done()
+					sem <- struct{}{}
+					defer func() { <-sem }()
+
+					result := runSingleStage(s)
+
+					mu.Lock()
+					defer mu.Unlock()
+					if !*flagJSON {
+						if result.Status == "fail" {
+							if result.Output != "" {
+								printf("%s\n", result.Output)
+							}
+							printf("✗ %s (failed)\n", result.Name)
+						} else {
+							if *flagVerbose && result.Output != "" {
+								printf("%s\n", result.Output)
+							}
+							printf("✓ %s (%dms)\n", result.Name, result.Duration.Milliseconds())
+						}
+					}
+					results = append(results, result)
+					if result.Status == "pass" {
+						cache[s.Name] = cacheKey
+					}
+					completed[s.Name] = true
+					if result.Status == "fail" && *flagFailFast {
+						failed = true
+					}
+				}(stage, stageCacheKey)
 			}
-			results = append(results, result)
-			if *flagFailFast {
-				break
-			}
+			wg.Wait()
 		} else {
-			if !*flagJSON {
-				if *flagVerbose && result.Output != "" {
-					printf("%s\n", result.Output)
+			// Sequential execution (original behavior)
+			for _, stage := range wave {
+				cmdStr := strings.Join(stage.Cmd, " ")
+				stageCacheKey := sourceHash + "|" + cmdStr
+
+				if !*flagNoCache && cache[stage.Name] == stageCacheKey {
+					if *flagVerbose && !*flagJSON {
+						printf("✓ %s (cached)\n", stage.Name)
+					}
+					results = append(results, Result{
+						Name: stage.Name, Command: cmdStr,
+						Status: "pass", CacheHit: true,
+					})
+					completed[stage.Name] = true
+					continue
 				}
-				printf("::endgroup::\n")
-				printf("✓ %s (%dms)\n", result.Name, result.Duration.Milliseconds())
+
+				if !*flagJSON {
+					printf("::group::%s\n", stage.Name)
+					if *flagVerbose {
+						printf("$ %s\n", cmdStr)
+					}
+				}
+
+				result := runSingleStage(stage)
+
+				if result.Status == "fail" {
+					if !*flagJSON {
+						if result.Output != "" {
+							printf("%s\n", result.Output)
+						}
+						printf("::endgroup::\n")
+						printf("✗ %s (failed)\n", result.Name)
+					}
+					results = append(results, result)
+					completed[stage.Name] = true
+					if *flagFailFast {
+						failed = true
+						break
+					}
+				} else {
+					if !*flagJSON {
+						if *flagVerbose && result.Output != "" {
+							printf("%s\n", result.Output)
+						}
+						printf("::endgroup::\n")
+						printf("✓ %s (%dms)\n", result.Name, result.Duration.Milliseconds())
+					}
+					results = append(results, result)
+					cache[stage.Name] = stageCacheKey
+					completed[stage.Name] = true
+				}
 			}
-			results = append(results, result)
-			// Update cache
-			cache[stage.Name] = stageCacheKey
 		}
 	}
 
