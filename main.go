@@ -1,18 +1,29 @@
-// local-ci — Local CI runner for Rust workspaces.
+// local-ci — Universal local CI runner for any project type.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust projects. Supports file-hash caching, configuration files, and colored output.
+// for Rust, Python, Node.js, Go, Java, and other projects.
+// Auto-detects project type and applies language-specific defaults.
+//
+// Supports file-hash caching, configuration files, and colored output.
 //
 // Usage:
 //
-//	local-ci                Run default stages (fmt, clippy, test)
+//	local-ci                Run default stages for detected project type
 //	local-ci fmt clippy     Run specific stages
 //	local-ci init           Initialize .local-ci.toml in current project
 //	local-ci --no-cache     Disable caching, force all stages
-//	local-ci --fix          Auto-fix formatting (cargo fmt without --check)
+//	local-ci --fix          Auto-fix issues
 //	local-ci --verbose      Show detailed output
 //	local-ci --list         List available stages
 //	local-ci --version      Print version
+//
+// Supported project types:
+//   - Rust (Cargo.toml)
+//   - Python (pyproject.toml, setup.py, requirements.txt)
+//   - Node.js (package.json)
+//   - Go (go.mod)
+//   - Java (pom.xml, build.gradle)
+//   - Generic (custom commands via .local-ci.toml)
 //
 package main
 
@@ -30,7 +41,7 @@ import (
 	"time"
 )
 
-var version = "0.2.0"
+var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
 
 type Stage struct {
 	Name    string
@@ -61,15 +72,16 @@ func main() {
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust workspaces\n\n", version)
+		fmt.Fprintf(os.Stderr, "local-ci v%s — Universal local CI for any project\n\n", version)
+		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, Node.js, Go, Java, and custom projects\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
-		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml in current project\n\n")
-		fmt.Fprintf(os.Stderr, "Stages:\n")
-		fmt.Fprintf(os.Stderr, "  fmt       Format check (cargo fmt --check)\n")
-		fmt.Fprintf(os.Stderr, "  clippy    Linter (cargo clippy -D warnings)\n")
-		fmt.Fprintf(os.Stderr, "  test      Tests (cargo test --workspace)\n")
-		fmt.Fprintf(os.Stderr, "  check     Compile check (cargo check)\n\n")
+		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  local-ci              Run enabled stages for your project\n")
+		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --fix        Auto-fix format/lint issues\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --list       List all available stages\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
