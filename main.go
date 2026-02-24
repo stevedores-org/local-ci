@@ -69,6 +69,7 @@ func main() {
 		flagList     = flag.Bool("list", false, "List available stages")
 		flagVersion  = flag.Bool("version", false, "Print version")
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote   = flag.Bool("remote", false, "Load remote config from .local-ci-remote.toml")
 	)
 
 	flag.Usage = func() {
@@ -105,7 +106,7 @@ func main() {
 	}
 
 	// Load configuration
-	config, err := LoadConfig(cwd)
+	config, err := LoadConfig(cwd, *flagRemote)
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
 	}

@@ -43,8 +43,8 @@ type WorkspaceConfig struct {
 	Exclude []string `toml:"exclude"`
 }
 
-// LoadConfig loads configuration from .local-ci.toml or returns defaults
-func LoadConfig(root string) (*Config, error) {
+// LoadConfig loads configuration from .local-ci.toml (and .local-ci-remote.toml if remote=true)
+func LoadConfig(root string, remote bool) (*Config, error) {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
 	// Detect project type for smart defaults
@@ -72,14 +72,59 @@ func LoadConfig(root string) (*Config, error) {
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return cfg, nil // Return defaults if file doesn't exist
+			// Fall through to remote config loading or return defaults
+		} else {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	} else {
+		// Parse TOML
+		if err := toml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
+		}
 	}
 
-	// Parse TOML
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
+	// If --remote flag is set, load and merge .local-ci-remote.toml
+	if remote {
+		remoteConfigPath := filepath.Join(root, ".local-ci-remote.toml")
+		remoteData, err := os.ReadFile(remoteConfigPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("failed to read remote config file: %w", err)
+			}
+			// If remote config doesn't exist, that's okay - just continue with local config
+		} else {
+			// Parse and merge remote TOML
+			remoteCfg := &Config{}
+			if err := toml.Unmarshal(remoteData, remoteCfg); err != nil {
+				return nil, fmt.Errorf("failed to parse .local-ci-remote.toml: %w", err)
+			}
+
+			// Merge remote stages (override local stages if specified in remote)
+			for name, stage := range remoteCfg.Stages {
+				cfg.Stages[name] = stage
+			}
+
+			// Merge remote cache config if specified
+			if len(remoteCfg.Cache.SkipDirs) > 0 {
+				cfg.Cache.SkipDirs = remoteCfg.Cache.SkipDirs
+			}
+			if len(remoteCfg.Cache.IncludePatterns) > 0 {
+				cfg.Cache.IncludePatterns = remoteCfg.Cache.IncludePatterns
+			}
+
+			// Merge remote dependencies if specified
+			if len(remoteCfg.Dependencies.Required) > 0 {
+				cfg.Dependencies.Required = remoteCfg.Dependencies.Required
+			}
+			if len(remoteCfg.Dependencies.Optional) > 0 {
+				cfg.Dependencies.Optional = remoteCfg.Dependencies.Optional
+			}
+
+			// Merge remote workspace config if specified
+			if len(remoteCfg.Workspace.Exclude) > 0 {
+				cfg.Workspace.Exclude = remoteCfg.Workspace.Exclude
+			}
+		}
 	}
 
 	// Merge defaults for stages not specified (but keep file values if set)
@@ -207,13 +252,29 @@ func (c *Config) GetTimeout(stageName string) time.Duration {
 	return 30 * time.Second // Safe default
 }
 
-// GetEnabledStages returns the list of enabled stage names
+// GetEnabledStages returns the list of enabled stage names in deterministic order
 func (c *Config) GetEnabledStages() []string {
+	// Define default order for common stages to ensure deterministic output
+	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+
 	var enabled []string
-	for name, stage := range c.Stages {
-		if stage.Enabled {
+	// First add stages in predefined order if they exist and are enabled
+	for _, name := range order {
+		if stage, ok := c.Stages[name]; ok && stage.Enabled {
 			enabled = append(enabled, name)
 		}
 	}
+
+	// Then add any remaining enabled stages not in the predefined order
+	seen := make(map[string]bool)
+	for _, name := range order {
+		seen[name] = true
+	}
+	for name, stage := range c.Stages {
+		if !seen[name] && stage.Enabled {
+			enabled = append(enabled, name)
+		}
+	}
+
 	return enabled
 }

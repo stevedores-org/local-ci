@@ -87,7 +87,7 @@ func TestLoadConfigDefaults(t *testing.T) {
 	tmpDir := createTestWorkspace(t)
 	defer os.RemoveAll(tmpDir)
 
-	config, err := LoadConfig(tmpDir)
+	config, err := LoadConfig(tmpDir, false)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -136,7 +136,7 @@ enabled = false
 		t.Fatalf("Failed to write config: %v", err)
 	}
 
-	config, err := LoadConfig(tmpDir)
+	config, err := LoadConfig(tmpDir, false)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -224,7 +224,7 @@ func TestComputeSourceHash(t *testing.T) {
 	tmpDir := createTestWorkspace(t)
 	defer os.RemoveAll(tmpDir)
 
-	config, _ := LoadConfig(tmpDir)
+	config, _ := LoadConfig(tmpDir, false)
 	ws, _ := DetectWorkspace(tmpDir)
 
 	hash1, err := computeSourceHash(tmpDir, config, ws)
@@ -258,7 +258,7 @@ func TestHashSkipsDirectories(t *testing.T) {
 	tmpDir := createTestWorkspace(t)
 	defer os.RemoveAll(tmpDir)
 
-	config, _ := LoadConfig(tmpDir)
+	config, _ := LoadConfig(tmpDir, false)
 	ws, _ := DetectWorkspace(tmpDir)
 
 	hash1, _ := computeSourceHash(tmpDir, config, ws)
@@ -430,7 +430,7 @@ func BenchmarkComputeSourceHash(b *testing.B) {
 	tmpDir := createTestWorkspace(&testing.T{})
 	defer os.RemoveAll(tmpDir)
 
-	config, _ := LoadConfig(tmpDir)
+	config, _ := LoadConfig(tmpDir, false)
 	ws, _ := DetectWorkspace(tmpDir)
 
 	b.ResetTimer()
@@ -445,7 +445,7 @@ func BenchmarkLoadConfig(b *testing.B) {
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		LoadConfig(tmpDir)
+		LoadConfig(tmpDir, false)
 	}
 }
 
@@ -457,7 +457,7 @@ func TestPerformanceMetrics(t *testing.T) {
 	// Measure config load time
 	start := time.Now()
 	for i := 0; i < 100; i++ {
-		LoadConfig(tmpDir)
+		LoadConfig(tmpDir, false)
 	}
 	duration := time.Since(start)
 	avgLoadTime := duration / 100
@@ -467,7 +467,7 @@ func TestPerformanceMetrics(t *testing.T) {
 	}
 
 	// Measure hash computation
-	config, _ := LoadConfig(tmpDir)
+	config, _ := LoadConfig(tmpDir, false)
 	ws, _ := DetectWorkspace(tmpDir)
 
 	start = time.Now()
