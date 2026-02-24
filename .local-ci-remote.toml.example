@@ -1,0 +1,38 @@
+# .local-ci-remote.toml — Remote-specific configuration overrides
+#
+# This file allows you to override .local-ci.toml settings when running
+# builds on a remote machine via `local-ci --remote aivcs@studio`
+#
+# Common use cases:
+# - Increase timeouts for slower remote machines
+# - Disable stages that don't work remotely
+# - Use different caching directory on shared storage
+# - Skip stages that are redundant with CI
+
+[cache]
+# Remote cache directory (relative to project root)
+# If unset, uses .local-ci-cache-remote
+cache_dir = ".local-ci-cache-remote"
+skip_dirs = [".git", "target", ".github", "scripts", ".claude"]
+include_patterns = ["*.rs", "*.toml"]
+
+# Override timeouts for slower remote machine
+[stages.fmt]
+timeout = 180  # increased from 120
+
+[stages.clippy]
+timeout = 900  # increased from 600
+
+[stages.test]
+timeout = 1800  # increased from 1200
+
+# Example: disable deny stage on remote (security check redundant with CI)
+[stages.deny]
+enabled = false
+
+# Example: increase test parallelism on powerful Mac Studio
+[stages.test]
+# Note: command array syntax still applies
+# To use environment variable for job count:
+# export CARGO_TEST_THREADS=4
+# local-ci --remote aivcs@studio test
