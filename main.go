@@ -38,9 +38,9 @@ var version = "0.2.0"
 type Stage struct {
 	Name    string   `toml:"-"`
 	Cmd     []string `toml:"command"`
-	FixCmd  []string `toml:"fix_command"`
-	Check   bool     `toml:"check"`
-	Timeout int      `toml:"timeout"`
+	FixCmd  []string `toml:"fix_command"` // command to run with --fix flag
+	Check   bool     `toml:"check"`       // true if this is a --check command
+	Timeout int      `toml:"timeout"`     // in seconds
 	Enabled bool     `toml:"enabled"`
 }
 
