@@ -4,10 +4,29 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
 )
+
+// stagePriority defines the canonical execution order.
+// Fast checks run first for best --fail-fast behavior.
+// Stages not in this list sort alphabetically after known stages.
+var stagePriority = map[string]int{
+	"fmt":     0,
+	"clippy":  1,
+	"check":   2,
+	"test":    3,
+	"deny":    4,
+	"audit":   5,
+	"machete": 6,
+	"taplo":   7,
+	// TypeScript stages
+	"lint":    0,
+	"typecheck": 1,
+	"build":  5,
+}
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
@@ -21,15 +40,6 @@ type Config struct {
 type CacheConfig struct {
 	SkipDirs       []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
-}
-
-// StageConfig defines a CI stage
-type StageConfig struct {
-	Command              []string      `toml:"command"`
-	FixCommand           []string      `toml:"fix_command"`
-	Timeout              int           `toml:"timeout"` // seconds
-	Enabled              bool          `toml:"enabled"`
-	RespectWorkspaceExcludes bool      `toml:"respect_workspace_excludes"`
 }
 
 // DepsConfig defines system dependencies
@@ -271,21 +281,6 @@ func defaultStages() map[string]Stage {
 	}
 }
 
-// ToStageConfigs converts the config stages map to Stage structs
-func (c *Config) ToStageConfigs() map[string]StageConfig {
-	result := make(map[string]StageConfig)
-	for name, stage := range c.Stages {
-		result[name] = StageConfig{
-			Command:              stage.Cmd,
-			FixCommand:           stage.FixCmd,
-			Timeout:              stage.Timeout,
-			Enabled:              stage.Enabled,
-			RespectWorkspaceExcludes: false,
-		}
-	}
-	return result
-}
-
 // GetTimeout returns the timeout for a stage, with fallback to default
 func (c *Config) GetTimeout(stageName string) time.Duration {
 	if stage, ok := c.Stages[stageName]; ok && stage.Timeout > 0 {
@@ -294,7 +289,9 @@ func (c *Config) GetTimeout(stageName string) time.Duration {
 	return 30 * time.Second // Safe default
 }
 
-// GetEnabledStages returns the list of enabled stage names
+// GetEnabledStages returns the list of enabled stage names in deterministic
+// priority order (fast checks first). Stages without an explicit priority
+// sort alphabetically after known stages.
 func (c *Config) GetEnabledStages() []string {
 	var enabled []string
 	for name, stage := range c.Stages {
@@ -302,5 +299,19 @@ func (c *Config) GetEnabledStages() []string {
 			enabled = append(enabled, name)
 		}
 	}
+	sort.Slice(enabled, func(i, j int) bool {
+		pi, oki := stagePriority[enabled[i]]
+		pj, okj := stagePriority[enabled[j]]
+		if oki && okj {
+			return pi < pj
+		}
+		if oki {
+			return true // known stages come first
+		}
+		if okj {
+			return false
+		}
+		return enabled[i] < enabled[j] // alphabetical fallback
+	})
 	return enabled
 }
