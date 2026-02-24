@@ -3,11 +3,20 @@ package main
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"time"
 
 	"github.com/BurntSushi/toml"
 )
+
+// defaultTestCommand returns the test command, preferring cargo-nextest when available.
+func defaultTestCommand() []string {
+	if _, err := exec.LookPath("cargo-nextest"); err == nil {
+		return []string{"cargo", "nextest", "run", "--workspace"}
+	}
+	return []string{"cargo", "test", "--workspace"}
+}
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
@@ -222,7 +231,7 @@ func defaultStages() map[string]Stage {
 		},
 		"test": {
 			Name:    "test",
-			Cmd:     []string{"cargo", "test", "--workspace"},
+			Cmd:     defaultTestCommand(),
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 1200,
