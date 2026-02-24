@@ -127,10 +127,14 @@ func main() {
 		fatalf("No project detected. Expected Cargo.toml (Rust) or package.json + tsconfig.json/bunfig.toml (TypeScript) in %s", cwd)
 	}
 
-	// Handle init subcommand
+	// Handle subcommands
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "init" {
 		cmdInit(cwd, kind)
+		return
+	}
+	if len(args) > 0 && args[0] == "serve" {
+		serveMCP()
 		return
 	}
 
