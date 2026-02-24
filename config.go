@@ -101,6 +101,12 @@ func LoadConfig(root string, kind ProjectKind) (*Config, error) {
 		}
 	}
 
+	// Populate Name field from map key (toml:"-" means it's not deserialized)
+	for name, stage := range cfg.Stages {
+		stage.Name = name
+		cfg.Stages[name] = stage
+	}
+
 	return cfg, nil
 }
 
