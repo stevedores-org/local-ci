@@ -9,12 +9,21 @@ import (
 	"github.com/BurntSushi/toml"
 )
 
+// Profile defines a named set of stage/flag overrides
+type Profile struct {
+	Stages   []string `toml:"stages"`
+	FailFast bool     `toml:"fail_fast"`
+	NoCache  bool     `toml:"no_cache"`
+	JSON     bool     `toml:"json"`
+}
+
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache       CacheConfig       `toml:"cache"`
-	Stages      map[string]Stage  `toml:"stages"`
-	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace   WorkspaceConfig   `toml:"workspace"`
+	Cache        CacheConfig          `toml:"cache"`
+	Stages       map[string]Stage     `toml:"stages"`
+	Dependencies DepsConfig           `toml:"dependencies"`
+	Workspace    WorkspaceConfig      `toml:"workspace"`
+	Profiles     map[string]Profile   `toml:"profiles"`
 }
 
 // CacheConfig defines caching behavior

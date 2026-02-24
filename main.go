@@ -86,6 +86,7 @@ func main() {
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
 		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
 		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
+		flagProfile  = flag.String("profile", "", "Use a named profile (fast, ci, agent, or custom)")
 	)
 
 	flag.Usage = func() {
@@ -165,14 +166,78 @@ func main() {
 		return
 	}
 
+	// Apply profile if specified
+	if *flagProfile != "" {
+		// Built-in profiles when none defined in config
+		builtinProfiles := map[string]Profile{
+			"fast":  {Stages: []string{"fmt", "clippy"}, FailFast: true},
+			"ci":    {Stages: []string{"fmt", "clippy", "test", "deny", "audit"}, NoCache: true},
+			"agent": {Stages: []string{"fmt", "clippy", "test"}, JSON: true, FailFast: true},
+		}
+
+		var profile Profile
+		var found bool
+		if config.Profiles != nil {
+			profile, found = config.Profiles[*flagProfile]
+		}
+		if !found {
+			profile, found = builtinProfiles[*flagProfile]
+		}
+		if !found {
+			fatalf("unknown profile %q", *flagProfile)
+		}
+
+		// Apply profile flag overrides
+		if profile.FailFast {
+			*flagFailFast = true
+		}
+		if profile.NoCache {
+			*flagNoCache = true
+		}
+		if profile.JSON {
+			*flagJSON = true
+		}
+		// Profile stages override CLI args
+		if len(profile.Stages) > 0 {
+			flag.CommandLine.Parse(profile.Stages)
+		}
+	}
+
 	// Build stage list from config
 	stageMap := config.Stages
 	var stages []Stage
-	for _, name := range flag.Args() {
-		if stage, ok := stageMap[name]; ok {
-			stages = append(stages, stage)
-		} else {
-			fatalf("unknown stage %q (use --list)", name)
+	if *flagProfile != "" && config.Profiles != nil {
+		if p, ok := config.Profiles[*flagProfile]; ok && len(p.Stages) > 0 {
+			for _, name := range p.Stages {
+				if stage, ok := stageMap[name]; ok {
+					stages = append(stages, stage)
+				}
+			}
+		}
+	}
+	// Also handle built-in profile stages
+	if len(stages) == 0 && *flagProfile != "" {
+		builtinProfiles := map[string][]string{
+			"fast":  {"fmt", "clippy"},
+			"ci":    {"fmt", "clippy", "test", "deny", "audit"},
+			"agent": {"fmt", "clippy", "test"},
+		}
+		if profileStages, ok := builtinProfiles[*flagProfile]; ok {
+			for _, name := range profileStages {
+				if stage, ok := stageMap[name]; ok {
+					stages = append(stages, stage)
+				}
+			}
+		}
+	}
+	// CLI stage args
+	if len(stages) == 0 {
+		for _, name := range flag.Args() {
+			if stage, ok := stageMap[name]; ok {
+				stages = append(stages, stage)
+			} else {
+				fatalf("unknown stage %q (use --list)", name)
+			}
 		}
 	}
 
