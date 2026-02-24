@@ -36,12 +36,12 @@ import (
 var version = "0.2.0"
 
 type Stage struct {
-	Name    string
-	Cmd     []string
-	FixCmd  []string // command to run with --fix flag
-	Check   bool     // true if this is a --check command
-	Timeout int      // in seconds
-	Enabled bool
+	Name    string   `toml:"-"`
+	Cmd     []string `toml:"command"`
+	FixCmd  []string `toml:"fix_command"` // command to run with --fix flag
+	Check   bool     `toml:"check"`       // true if this is a --check command
+	Timeout int      `toml:"timeout"`     // in seconds
+	Enabled bool     `toml:"enabled"`
 }
 
 type Result struct {
