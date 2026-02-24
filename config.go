@@ -211,6 +211,7 @@ func defaultStages() map[string]Stage {
 			Check:   true,
 			Timeout: 120,
 			Enabled: true,
+			Watch:   []string{"*.rs"},
 		},
 		"clippy": {
 			Name:    "clippy",
@@ -219,6 +220,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 600,
 			Enabled: true,
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"test": {
 			Name:    "test",
@@ -227,6 +229,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 1200,
 			Enabled: true,
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"check": {
 			Name:    "check",
@@ -242,7 +245,8 @@ func defaultStages() map[string]Stage {
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 300,
-			Enabled: false, // Requires cargo-deny to be installed
+			Enabled: false,
+			Watch:   []string{"Cargo.toml", "Cargo.lock", "deny.toml"},
 		},
 		"audit": {
 			Name:    "audit",
@@ -250,7 +254,8 @@ func defaultStages() map[string]Stage {
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 300,
-			Enabled: false, // Requires cargo-audit to be installed
+			Enabled: false,
+			Watch:   []string{"Cargo.toml", "Cargo.lock"},
 		},
 		"machete": {
 			Name:    "machete",

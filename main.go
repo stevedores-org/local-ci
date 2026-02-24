@@ -44,6 +44,7 @@ type Stage struct {
 	Check   bool     `toml:"check"`       // true if this is a --check command
 	Timeout int      `toml:"timeout"`     // in seconds
 	Enabled bool     `toml:"enabled"`
+	Watch   []string `toml:"watch"`       // file patterns this stage cares about (e.g. ["*.rs"])
 }
 
 type Result struct {
@@ -260,7 +261,8 @@ func main() {
 	for _, stage := range stages {
 		stageStart := time.Now()
 		cmdStr := strings.Join(stage.Cmd, " ")
-		stageCacheKey := sourceHash + "|" + cmdStr
+		stageHash := computeStageHash(cwd, config, ws, stage, sourceHash)
+		stageCacheKey := stageHash + "|" + cmdStr
 
 		// Check cache
 		if !*flagNoCache && cache[stage.Name] == stageCacheKey {
@@ -472,6 +474,56 @@ func toJSONResults(results []Result) []ResultJSON {
 		out = append(out, item)
 	}
 	return out
+}
+
+// computeStageHash computes a per-stage hash based on the stage's Watch patterns.
+// Falls back to the global source hash when Watch is empty.
+func computeStageHash(root string, config *Config, ws *Workspace, stage Stage, globalHash string) string {
+	if len(stage.Watch) == 0 {
+		return globalHash
+	}
+	h := md5.New()
+	skipDirs := make(map[string]bool)
+	for _, dir := range config.Cache.SkipDirs {
+		skipDirs[dir] = true
+	}
+	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if ws != nil && !ws.IsSingle {
+			relPath, relErr := filepath.Rel(root, path)
+			if relErr == nil && ws.IsExcluded(relPath) {
+				return nil
+			}
+		}
+		for _, pattern := range stage.Watch {
+			if strings.HasPrefix(pattern, "*.") {
+				ext := pattern[1:]
+				if strings.HasSuffix(d.Name(), ext) {
+					data, readErr := os.ReadFile(path)
+					if readErr == nil {
+						h.Write(data)
+					}
+					break
+				}
+			} else if d.Name() == pattern {
+				data, readErr := os.ReadFile(path)
+				if readErr == nil {
+					h.Write(data)
+				}
+				break
+			}
+		}
+		return nil
+	})
+	return fmt.Sprintf("%x", h.Sum(nil))
 }
 
 // computeSourceHash computes MD5 hash of Rust source files
