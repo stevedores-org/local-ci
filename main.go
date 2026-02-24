@@ -74,6 +74,20 @@ type ResultJSON struct {
 	Error      string `json:"error,omitempty"`
 }
 
+type DryRunReport struct {
+	DryRun     bool            `json:"dry_run"`
+	Workspace  string          `json:"workspace"`
+	SourceHash string          `json:"source_hash"`
+	Stages     []DryRunStage   `json:"stages"`
+}
+
+type DryRunStage struct {
+	Name     string `json:"name"`
+	Command  string `json:"command"`
+	WouldRun bool   `json:"would_run"`
+	Reason   string `json:"reason"`
+}
+
 func main() {
 	var (
 		flagNoCache  = flag.Bool("no-cache", false, "Disable file hash cache")
@@ -86,6 +100,7 @@ func main() {
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
 		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
 		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
+		flagDryRun   = flag.Bool("dry-run", false, "Preview what would run without executing")
 	)
 
 	flag.Usage = func() {
@@ -222,6 +237,72 @@ func main() {
 	}
 	if cache == nil {
 		cache = make(map[string]string)
+	}
+
+	// Dry-run mode: preview what would run without executing
+	if *flagDryRun {
+		var dryStages []DryRunStage
+		wouldRun := 0
+		cached := 0
+		disabled := 0
+
+		// Include all stages (enabled + disabled) for full picture
+		for name, stage := range stageMap {
+			cmdStr := strings.Join(stage.Cmd, " ")
+			stageCacheKey := sourceHash + "|" + cmdStr
+
+			ds := DryRunStage{Name: name, Command: cmdStr}
+			if !stage.Enabled {
+				ds.WouldRun = false
+				ds.Reason = "disabled"
+				disabled++
+			} else if !*flagNoCache && cache[name] == stageCacheKey {
+				ds.WouldRun = false
+				ds.Reason = "cached"
+				cached++
+			} else {
+				ds.WouldRun = true
+				ds.Reason = "hash_changed"
+				wouldRun++
+			}
+			dryStages = append(dryStages, ds)
+		}
+
+		// Sort by priority for consistent output
+		sort.Slice(dryStages, func(i, j int) bool {
+			return dryStages[i].Name < dryStages[j].Name
+		})
+
+		if *flagJSON {
+			report := DryRunReport{
+				DryRun:     true,
+				Workspace:  cwd,
+				SourceHash: sourceHash,
+				Stages:     dryStages,
+			}
+			enc := json.NewEncoder(os.Stdout)
+			enc.SetIndent("", "  ")
+			_ = enc.Encode(report)
+		} else {
+			printf("Dry run — no commands will be executed\n\n")
+			printf("  Workspace: %s\n", cwd)
+			printf("  Source hash: %s\n", sourceHash)
+			printf("\n  Stages:\n")
+			for i, ds := range dryStages {
+				status := ""
+				switch ds.Reason {
+				case "cached":
+					status = "[CACHED - would skip]"
+				case "hash_changed":
+					status = "[STALE - would run]"
+				case "disabled":
+					status = "[DISABLED]"
+				}
+				printf("    %d. %-10s %-50s %s\n", i+1, ds.Name, ds.Command, status)
+			}
+			printf("\n  Estimated: %d to run, %d cached, %d disabled\n", wouldRun, cached, disabled)
+		}
+		return
 	}
 
 	// Run stages
