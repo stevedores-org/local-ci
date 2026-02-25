@@ -23,22 +23,22 @@ var stagePriority = map[string]int{
 	"machete": 6,
 	"taplo":   7,
 	// TypeScript stages
-	"lint":    0,
+	"lint":      0,
 	"typecheck": 1,
-	"build":  5,
+	"build":     5,
 }
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache       CacheConfig       `toml:"cache"`
-	Stages      map[string]Stage  `toml:"stages"`
+	Cache        CacheConfig      `toml:"cache"`
+	Stages       map[string]Stage `toml:"stages"`
 	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace   WorkspaceConfig   `toml:"workspace"`
+	Workspace    WorkspaceConfig  `toml:"workspace"`
 }
 
 // CacheConfig defines caching behavior
 type CacheConfig struct {
-	SkipDirs       []string `toml:"skip_dirs"`
+	SkipDirs        []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
 }
 
@@ -66,7 +66,7 @@ func LoadConfig(root string) (*Config, error) {
 
 	cfg := &Config{
 		Cache: CacheConfig{
-			SkipDirs: skipDirs,
+			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
 		Stages: defaultStages,

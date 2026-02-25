@@ -150,9 +150,12 @@ func TestIsExcludedChildPath(t *testing.T) {
 func TestDetectWorkspaceNoCargoToml(t *testing.T) {
 	dir := t.TempDir()
 
-	_, err := DetectWorkspace(dir)
-	if err == nil {
-		t.Error("expected error when Cargo.toml is missing")
+	ws, err := DetectWorkspace(dir)
+	if err != nil {
+		t.Fatalf("DetectWorkspace should not fail when no project indicator exists: %v", err)
+	}
+	if !ws.IsSingle {
+		t.Error("expected default workspace to be IsSingle: true")
 	}
 }
 

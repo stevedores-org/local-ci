@@ -181,4 +181,3 @@ exclude = []
 `
 	return os.WriteFile(configPath, []byte(content), 0644)
 }
-

@@ -35,10 +35,10 @@ func TestGetEnabledStages(t *testing.T) {
 func TestGetEnabledStagesUnknownStagesSortAlphabetically(t *testing.T) {
 	config := &Config{
 		Stages: map[string]Stage{
-			"test":    {Name: "test", Enabled: true},
-			"zeta":    {Name: "zeta", Enabled: true},
-			"alpha":   {Name: "alpha", Enabled: true},
-			"fmt":     {Name: "fmt", Enabled: true},
+			"test":  {Name: "test", Enabled: true},
+			"zeta":  {Name: "zeta", Enabled: true},
+			"alpha": {Name: "alpha", Enabled: true},
+			"fmt":   {Name: "fmt", Enabled: true},
 		},
 	}
 
@@ -94,7 +94,7 @@ func TestLoadConfigMalformedTOML(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"x\"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte("this is not valid toml {{{}}}"), 0644)
 
-	_, err := LoadConfig(dir, ProjectKindRust)
+	_, err := LoadConfig(dir)
 	if err == nil {
 		t.Error("expected error for malformed TOML config")
 	}
@@ -112,7 +112,7 @@ enabled = true
 `
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte(configContent), 0644)
 
-	config, err := LoadConfig(dir, ProjectKindRust)
+	config, err := LoadConfig(dir)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}

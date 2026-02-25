@@ -32,7 +32,7 @@ func TestRemoteExecutorDefaultSession(t *testing.T) {
 
 func TestEscapeShellArg(t *testing.T) {
 	tests := map[string]string{
-		"/simple/path": "/simple/path",
+		"/simple/path":      "/simple/path",
 		"/path with spaces": "''/path with spaces''",
 		"/path'with'quotes": "''/path'\\''with'\\''quotes''",
 	}
