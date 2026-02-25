@@ -44,15 +44,16 @@ import (
 	"time"
 )
 
-var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
+var version = "0.4.0" // Parallel stage execution with dependency graph
 
 type Stage struct {
-	Name    string   `toml:"-"`
-	Cmd     []string `toml:"command"`
-	FixCmd  []string `toml:"fix_command"` // command to run with --fix flag
-	Check   bool     `toml:"check"`       // true if this is a --check command
-	Timeout int      `toml:"timeout"`     // in seconds
-	Enabled bool     `toml:"enabled"`
+	Name      string   `toml:"-"`
+	Cmd       []string `toml:"command"`
+	FixCmd    []string `toml:"fix_command"`  // command to run with --fix flag
+	Check     bool     `toml:"check"`        // true if this is a --check command
+	Timeout   int      `toml:"timeout"`      // in seconds
+	Enabled   bool     `toml:"enabled"`
+	DependsOn string   `toml:"depends_on"`   // stage that must complete before this one
 }
 
 type Result struct {
@@ -93,8 +94,11 @@ func main() {
 		flagList     = flag.Bool("list", false, "List available stages")
 		flagVersion  = flag.Bool("version", false, "Print version")
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
-		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
-		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
+		flagRemote    = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
+		flagSession   = flag.String("session", "onion", "tmux session name for remote execution")
+		flagParallel  = flag.Bool("parallel", false, "Run independent stages concurrently")
+		flagJobs      = flag.Int("j", 0, "Max concurrent stages (0 = auto, implies --parallel)")
+		flagDryRun    = flag.Bool("dry-run", false, "Show what would run without executing")
 	)
 
 	flag.Usage = func() {
@@ -217,6 +221,17 @@ func main() {
 		cache = make(map[string]string)
 	}
 
+	// Dry-run mode
+	if *flagDryRun {
+		report := BuildDryRunReport(cwd, sourceHash, config.Stages, stages, cache, *flagNoCache)
+		if *flagJSON {
+			PrintDryRunJSON(report)
+		} else {
+			PrintDryRunHuman(report)
+		}
+		return
+	}
+
 	// Run stages
 	var results []Result
 	start := time.Now()
@@ -250,6 +265,53 @@ func main() {
 		}
 	}
 
+	// Parallel execution mode
+	useParallel := *flagParallel || *flagJobs > 0
+	if useParallel && remoteExec == nil {
+		pr := &ParallelRunner{
+			Stages:      stages,
+			Concurrency: *flagJobs,
+			Cwd:         cwd,
+			NoCache:     *flagNoCache,
+			Cache:       cache,
+			SourceHash:  sourceHash,
+			Verbose:     *flagVerbose,
+			JSON:        *flagJSON,
+			FailFast:    *flagFailFast,
+		}
+
+		parallelResults, err := pr.RunParallel()
+		if err != nil {
+			fatalf("Parallel execution failed: %v", err)
+		}
+		results = parallelResults
+
+		// Update cache for passing stages
+		for _, r := range results {
+			if r.Status == "pass" && !r.CacheHit {
+				cache[r.Name] = sourceHash + "|" + r.Command
+			}
+		}
+
+		// Print results
+		if !*flagJSON {
+			for _, r := range results {
+				if r.Status == "fail" {
+					if r.Output != "" {
+						printf("%s\n", r.Output)
+					}
+					printf("✗ %s (failed)\n", r.Name)
+				} else if !r.CacheHit {
+					if *flagVerbose && r.Output != "" {
+						printf("%s\n", r.Output)
+					}
+					printf("✓ %s (%dms)\n", r.Name, r.Duration.Milliseconds())
+				} else if *flagVerbose {
+					printf("✓ %s (cached)\n", r.Name)
+				}
+			}
+		}
+	} else {
 	for _, stage := range stages {
 		stageStart := time.Now()
 		cmdStr := strings.Join(stage.Cmd, " ")
@@ -340,6 +402,7 @@ func main() {
 			// Update cache
 			cache[stage.Name] = stageCacheKey
 		}
+	}
 	}
 
 	// Save cache
