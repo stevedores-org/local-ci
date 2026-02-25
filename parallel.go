@@ -21,6 +21,7 @@ type ParallelRunner struct {
 	Verbose     bool
 	JSON        bool
 	FailFast    bool
+	cacheMu     sync.RWMutex // protects Cache reads during parallel execution
 }
 
 // buildDepGraph returns a map from stage name to its dependency name (or "").
@@ -178,8 +179,11 @@ func (pr *ParallelRunner) executeStage(stage Stage) Result {
 	cmdStr := strings.Join(stage.Cmd, " ")
 	stageCacheKey := pr.SourceHash + "|" + cmdStr
 
-	// Check cache
-	if !pr.NoCache && pr.Cache[stage.Name] == stageCacheKey {
+	// Check cache (protected for concurrent reads during parallel execution)
+	pr.cacheMu.RLock()
+	cacheHit := !pr.NoCache && pr.Cache[stage.Name] == stageCacheKey
+	pr.cacheMu.RUnlock()
+	if cacheHit {
 		return Result{
 			Name:     stage.Name,
 			Command:  cmdStr,

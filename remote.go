@@ -197,14 +197,12 @@ func (re *RemoteExecutor) sshExecWithOutput(ctx context.Context, cmd string) (st
 		if strings.Contains(cmd, "cat") && strings.Contains(stderr.String(), "No such file") {
 			return "", nil
 		}
-		// Other SSH errors should be reported
-		if strings.Contains(stderr.String(), "") && stdout.String() == "" {
-			return stdout.String(), nil // Command succeeded but produced no output
+		// If there's no stderr output and no stdout, the command likely succeeded
+		// but the exit code was non-zero for a benign reason (e.g., tmux session already exists)
+		if stderr.Len() == 0 && stdout.Len() == 0 {
+			return "", nil
 		}
-		// Only return error if this is a real failure
-		if !strings.Contains(cmd, "cat") || stderr.String() != "" {
-			return stdout.String(), fmt.Errorf("SSH command failed: %w", err)
-		}
+		return stdout.String(), fmt.Errorf("SSH command failed: %w (stderr: %s)", err, stderr.String())
 	}
 
 	return stdout.String(), nil
