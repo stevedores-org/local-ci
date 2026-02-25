@@ -76,7 +76,7 @@ func cmdServe(root string) error {
 	return server.ServeStdio(s)
 }
 
-func (mc *mcpContext) handleRunStage(_ context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (mc *mcpContext) handleRunStage(ctx context.Context, req mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	name, err := req.RequireString("name")
 	if err != nil {
 		return mcp.NewToolResultError("missing required parameter: name"), nil
@@ -86,19 +86,22 @@ func (mc *mcpContext) handleRunStage(_ context.Context, req mcp.CallToolRequest)
 	if !ok {
 		return mcp.NewToolResultError(fmt.Sprintf("unknown stage: %s", name)), nil
 	}
+	if !stage.Enabled {
+		return mcp.NewToolResultError(fmt.Sprintf("stage %q is disabled; enable it in .local-ci.toml to run", name)), nil
+	}
 	stage.Name = name
 
-	result := mc.executeStage(stage)
+	result := mc.executeStage(ctx, stage)
 	return mc.resultToMCP(result), nil
 }
 
-func (mc *mcpContext) handleRunAll(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
+func (mc *mcpContext) handleRunAll(ctx context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
 	enabledNames := mc.config.GetEnabledStages()
 	var results []Result
 	for _, name := range enabledNames {
 		stage := mc.config.Stages[name]
 		stage.Name = name
-		r := mc.executeStage(stage)
+		r := mc.executeStage(ctx, stage)
 		results = append(results, r)
 	}
 	return mc.resultsToMCP(results), nil
@@ -173,16 +176,23 @@ func (mc *mcpContext) handleInvalidate(_ context.Context, req mcp.CallToolReques
 		return mcp.NewToolResultError(fmt.Sprintf("unknown stage: %s", name)), nil
 	}
 
+	type invalidateResp struct {
+		Stage  string `json:"stage"`
+		Status string `json:"status"`
+	}
+
 	cache, _ := loadCache(mc.root)
 	if _, exists := cache[name]; !exists {
-		return mcp.NewToolResultText(fmt.Sprintf(`{"stage":"%s","status":"no_cache_entry"}`, name)), nil
+		data, _ := json.Marshal(invalidateResp{Stage: name, Status: "no_cache_entry"})
+		return mcp.NewToolResultText(string(data)), nil
 	}
 	delete(cache, name)
 	if err := saveCache(cache, mc.root); err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to save cache: %v", err)), nil
 	}
 
-	return mcp.NewToolResultText(fmt.Sprintf(`{"stage":"%s","status":"invalidated"}`, name)), nil
+	data, _ := json.Marshal(invalidateResp{Stage: name, Status: "invalidated"})
+	return mcp.NewToolResultText(string(data)), nil
 }
 
 func (mc *mcpContext) handleGetSourceHash(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -190,7 +200,11 @@ func (mc *mcpContext) handleGetSourceHash(_ context.Context, _ mcp.CallToolReque
 	if err != nil {
 		return mcp.NewToolResultError(fmt.Sprintf("failed to compute hash: %v", err)), nil
 	}
-	return mcp.NewToolResultText(fmt.Sprintf(`{"hash":"%s"}`, hash)), nil
+	type hashResp struct {
+		Hash string `json:"hash"`
+	}
+	data, _ := json.Marshal(hashResp{Hash: hash})
+	return mcp.NewToolResultText(string(data)), nil
 }
 
 func (mc *mcpContext) handleGetWorkspace(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
@@ -220,7 +234,7 @@ func (mc *mcpContext) handleGetWorkspace(_ context.Context, _ mcp.CallToolReques
 }
 
 // executeStage runs a single stage locally and returns the result.
-func (mc *mcpContext) executeStage(stage Stage) Result {
+func (mc *mcpContext) executeStage(parent context.Context, stage Stage) Result {
 	cmdStr := strings.Join(stage.Cmd, " ")
 
 	// Check cache
@@ -242,18 +256,21 @@ func (mc *mcpContext) executeStage(stage Stage) Result {
 	if timeout == 0 {
 		timeout = 30 * time.Second
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), timeout)
+	ctx, cancel := context.WithTimeout(parent, timeout)
 	defer cancel()
 
+	start := time.Now()
 	cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
 	cmd.Dir = mc.root
 	cmd.Env = os.Environ()
 	output, err := cmd.CombinedOutput()
+	elapsed := time.Since(start)
 
 	result := Result{
-		Name:    stage.Name,
-		Command: cmdStr,
-		Output:  string(output),
+		Name:     stage.Name,
+		Command:  cmdStr,
+		Output:   string(output),
+		Duration: elapsed,
 	}
 
 	if err != nil {

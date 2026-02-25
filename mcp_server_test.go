@@ -90,7 +90,7 @@ func TestHandleGetStages_CacheHitAfterRun(t *testing.T) {
 	// Run the stage to populate cache
 	stage := mc.config.Stages["echo"]
 	stage.Name = "echo"
-	mc.executeStage(stage)
+	mc.executeStage(context.Background(), stage)
 
 	result, err := mc.handleGetStages(context.Background(), mcp.CallToolRequest{})
 	if err != nil {
@@ -170,7 +170,7 @@ func TestHandleGetStaleStages_NoneAfterRun(t *testing.T) {
 
 	stage := mc.config.Stages["echo"]
 	stage.Name = "echo"
-	mc.executeStage(stage)
+	mc.executeStage(context.Background(), stage)
 
 	result, _ := mc.handleGetStaleStages(context.Background(), mcp.CallToolRequest{})
 	var stale []struct {
@@ -263,6 +263,23 @@ func TestHandleRunStage_CacheHitOnSecondRun(t *testing.T) {
 	}
 }
 
+func TestHandleRunStage_DisabledStage(t *testing.T) {
+	mc := newTestMCPContext(t, map[string]Stage{
+		"deny": {Cmd: []string{"echo", "deny"}, Enabled: false, Timeout: 10},
+	})
+
+	req := makeCallToolRequest(map[string]interface{}{"name": "deny"})
+	result, _ := mc.handleRunStage(context.Background(), req)
+
+	if !result.IsError {
+		t.Error("expected IsError=true for disabled stage")
+	}
+	text := result.Content[0].(mcp.TextContent).Text
+	if text == "" {
+		t.Error("expected error message for disabled stage")
+	}
+}
+
 // --- run_all tests ---
 
 func TestHandleRunAll_RunsEnabledOnly(t *testing.T) {
@@ -319,7 +336,7 @@ func TestHandleInvalidate_ClearsCache(t *testing.T) {
 	// Run to populate cache
 	stage := mc.config.Stages["echo"]
 	stage.Name = "echo"
-	mc.executeStage(stage)
+	mc.executeStage(context.Background(), stage)
 
 	// Verify cache hit
 	req := makeCallToolRequest(map[string]interface{}{"name": "echo"})
@@ -466,7 +483,7 @@ func TestExecuteStage_PassingCommand(t *testing.T) {
 	mc := newTestMCPContext(t, map[string]Stage{})
 	stage := Stage{Name: "echo", Cmd: []string{"echo", "hello world"}, Timeout: 10}
 
-	r := mc.executeStage(stage)
+	r := mc.executeStage(context.Background(), stage)
 	if r.Status != "pass" {
 		t.Errorf("expected pass, got %q", r.Status)
 	}
@@ -475,11 +492,24 @@ func TestExecuteStage_PassingCommand(t *testing.T) {
 	}
 }
 
+func TestExecuteStage_RecordsDuration(t *testing.T) {
+	mc := newTestMCPContext(t, map[string]Stage{})
+	stage := Stage{Name: "sleep", Cmd: []string{"sleep", "0.05"}, Timeout: 10}
+
+	r := mc.executeStage(context.Background(), stage)
+	if r.Duration == 0 {
+		t.Error("expected non-zero duration for executed stage")
+	}
+	if r.Duration.Milliseconds() < 40 {
+		t.Errorf("duration too short: %v", r.Duration)
+	}
+}
+
 func TestExecuteStage_FailingCommand(t *testing.T) {
 	mc := newTestMCPContext(t, map[string]Stage{})
 	stage := Stage{Name: "fail", Cmd: []string{"false"}, Timeout: 10}
 
-	r := mc.executeStage(stage)
+	r := mc.executeStage(context.Background(), stage)
 	if r.Status != "fail" {
 		t.Errorf("expected fail, got %q", r.Status)
 	}
@@ -492,12 +522,12 @@ func TestExecuteStage_CacheOnSuccess(t *testing.T) {
 	mc := newTestMCPContext(t, map[string]Stage{})
 	stage := Stage{Name: "echo", Cmd: []string{"echo", "cache me"}, Timeout: 10}
 
-	r1 := mc.executeStage(stage)
+	r1 := mc.executeStage(context.Background(), stage)
 	if r1.CacheHit {
 		t.Error("first run should not be cache hit")
 	}
 
-	r2 := mc.executeStage(stage)
+	r2 := mc.executeStage(context.Background(), stage)
 	if !r2.CacheHit {
 		t.Error("second run should be cache hit")
 	}
@@ -510,8 +540,8 @@ func TestExecuteStage_NoCacheOnFailure(t *testing.T) {
 	mc := newTestMCPContext(t, map[string]Stage{})
 	stage := Stage{Name: "fail", Cmd: []string{"false"}, Timeout: 10}
 
-	mc.executeStage(stage)
-	r2 := mc.executeStage(stage)
+	mc.executeStage(context.Background(), stage)
+	r2 := mc.executeStage(context.Background(), stage)
 
 	if r2.CacheHit {
 		t.Error("failed commands should not be cached")
