@@ -132,7 +132,7 @@ func TestGetDefaultStagesForNode(t *testing.T) {
 // TestGetCachePatternForType verifies cache patterns are language-specific
 func TestGetCachePatternForType(t *testing.T) {
 	tests := []struct {
-		projectType ProjectType
+		projectType   ProjectType
 		shouldContain string
 	}{
 		{ProjectTypeRust, "*.rs"},
@@ -160,7 +160,7 @@ func TestGetCachePatternForType(t *testing.T) {
 // TestGetSkipDirsForType verifies skip dirs are language-specific
 func TestGetSkipDirsForType(t *testing.T) {
 	tests := []struct {
-		projectType ProjectType
+		projectType   ProjectType
 		shouldContain string
 	}{
 		{ProjectTypeRust, "target"},

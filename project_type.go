@@ -9,12 +9,12 @@ import (
 type ProjectType string
 
 const (
-	ProjectTypeRust     ProjectType = "rust"
-	ProjectTypePython   ProjectType = "python"
-	ProjectTypeNode     ProjectType = "node"
-	ProjectTypeGo       ProjectType = "go"
-	ProjectTypeJava     ProjectType = "java"
-	ProjectTypeGeneric  ProjectType = "generic"
+	ProjectTypeRust    ProjectType = "rust"
+	ProjectTypePython  ProjectType = "python"
+	ProjectTypeNode    ProjectType = "node"
+	ProjectTypeGo      ProjectType = "go"
+	ProjectTypeJava    ProjectType = "java"
+	ProjectTypeGeneric ProjectType = "generic"
 )
 
 // DetectProjectType analyzes the project root and determines its type
@@ -175,7 +175,7 @@ func getGoStages() map[string]Stage {
 			FixCmd:  []string{"go", "fmt", "./..."},
 			Check:   true,
 			Timeout: 120,
-			Enabled: false,
+			Enabled: true,
 		},
 		"vet": {
 			Name:    "vet",
@@ -183,7 +183,7 @@ func getGoStages() map[string]Stage {
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 300,
-			Enabled: false,
+			Enabled: true,
 		},
 		"test": {
 			Name:    "test",
@@ -191,7 +191,7 @@ func getGoStages() map[string]Stage {
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 600,
-			Enabled: false,
+			Enabled: true,
 		},
 	}
 }
@@ -407,17 +407,17 @@ include_patterns = ["*.go", "go.mod", "go.sum"]
 command = ["go", "fmt", "./..."]
 fix_command = ["go", "fmt", "./..."]
 timeout = 120
-enabled = false
+enabled = true
 
 [stages.vet]
 command = ["go", "vet", "./..."]
 timeout = 300
-enabled = false
+enabled = true
 
 [stages.test]
 command = ["go", "test", "./..."]
 timeout = 600
-enabled = false
+enabled = true
 
 [dependencies]
 optional = []

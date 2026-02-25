@@ -28,8 +28,30 @@ type CargoToml struct {
 	} `toml:"package"`
 }
 
-// DetectWorkspace detects the workspace structure from Cargo.toml
+// DetectWorkspace detects the workspace structure based on the project type
 func DetectWorkspace(root string) (*Workspace, error) {
+	// Try Cargo.toml first (Rust)
+	cargoPath := filepath.Join(root, "Cargo.toml")
+	if _, err := os.Stat(cargoPath); err == nil {
+		return detectCargoWorkspace(root)
+	}
+
+	// Try package.json (TypeScript/Node)
+	packagePath := filepath.Join(root, "package.json")
+	if _, err := os.Stat(packagePath); err == nil {
+		return DetectTypeScriptWorkspace(root)
+	}
+
+	// Default: Single-member workspace for Go, etc.
+	return &Workspace{
+		Root:     root,
+		Members:  []string{"."},
+		IsSingle: true,
+	}, nil
+}
+
+// detectCargoWorkspace detects the workspace structure from Cargo.toml
+func detectCargoWorkspace(root string) (*Workspace, error) {
 	cargoPath := filepath.Join(root, "Cargo.toml")
 
 	data, err := os.ReadFile(cargoPath)

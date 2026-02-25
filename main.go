@@ -24,7 +24,6 @@
 //   - Go (go.mod)
 //   - Java (pom.xml, build.gradle)
 //   - Generic (custom commands via .local-ci.toml)
-//
 package main
 
 import (

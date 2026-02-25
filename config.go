@@ -11,25 +11,25 @@ import (
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache       CacheConfig       `toml:"cache"`
-	Stages      map[string]Stage  `toml:"stages"`
+	Cache        CacheConfig      `toml:"cache"`
+	Stages       map[string]Stage `toml:"stages"`
 	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace   WorkspaceConfig   `toml:"workspace"`
+	Workspace    WorkspaceConfig  `toml:"workspace"`
 }
 
 // CacheConfig defines caching behavior
 type CacheConfig struct {
-	SkipDirs       []string `toml:"skip_dirs"`
+	SkipDirs        []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
 }
 
 // StageConfig defines a CI stage
 type StageConfig struct {
-	Command              []string      `toml:"command"`
-	FixCommand           []string      `toml:"fix_command"`
-	Timeout              int           `toml:"timeout"` // seconds
-	Enabled              bool          `toml:"enabled"`
-	RespectWorkspaceExcludes bool      `toml:"respect_workspace_excludes"`
+	Command                  []string `toml:"command"`
+	FixCommand               []string `toml:"fix_command"`
+	Timeout                  int      `toml:"timeout"` // seconds
+	Enabled                  bool     `toml:"enabled"`
+	RespectWorkspaceExcludes bool     `toml:"respect_workspace_excludes"`
 }
 
 // DepsConfig defines system dependencies
@@ -56,7 +56,7 @@ func LoadConfig(root string) (*Config, error) {
 
 	cfg := &Config{
 		Cache: CacheConfig{
-			SkipDirs: skipDirs,
+			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
 		Stages: defaultStages,
@@ -196,10 +196,10 @@ func (c *Config) ToStageConfigs() map[string]StageConfig {
 	result := make(map[string]StageConfig)
 	for name, stage := range c.Stages {
 		result[name] = StageConfig{
-			Command:              stage.Cmd,
-			FixCommand:           stage.FixCmd,
-			Timeout:              stage.Timeout,
-			Enabled:              stage.Enabled,
+			Command:                  stage.Cmd,
+			FixCommand:               stage.FixCmd,
+			Timeout:                  stage.Timeout,
+			Enabled:                  stage.Enabled,
 			RespectWorkspaceExcludes: false,
 		}
 	}
