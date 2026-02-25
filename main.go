@@ -16,6 +16,8 @@
 //	local-ci --verbose      Show detailed output
 //	local-ci --list         List available stages
 //	local-ci --version      Print version
+//	local-ci --remote HOST  Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)
+//	local-ci --session NAME Use specific tmux session name (default: onion)
 //
 // Supported project types:
 //   - Rust (Cargo.toml)
@@ -47,9 +49,9 @@ var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java
 type Stage struct {
 	Name    string   `toml:"-"`
 	Cmd     []string `toml:"command"`
-	FixCmd  []string `toml:"fix_command"`
-	Check   bool     `toml:"check"`
-	Timeout int      `toml:"timeout"`
+	FixCmd  []string `toml:"fix_command"` // command to run with --fix flag
+	Check   bool     `toml:"check"`       // true if this is a --check command
+	Timeout int      `toml:"timeout"`     // in seconds
 	Enabled bool     `toml:"enabled"`
 }
 
@@ -91,6 +93,8 @@ func main() {
 		flagList     = flag.Bool("list", false, "List available stages")
 		flagVersion  = flag.Bool("version", false, "Print version")
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
+		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
 	)
 
 	flag.Usage = func() {
@@ -104,6 +108,9 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
 		fmt.Fprintf(os.Stderr, "  local-ci --fix        Auto-fix format/lint issues\n")
 		fmt.Fprintf(os.Stderr, "  local-ci --list       List all available stages\n\n")
+		fmt.Fprintf(os.Stderr, "Remote execution:\n")
+		fmt.Fprintf(os.Stderr, "  --remote HOST  Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)\n")
+		fmt.Fprintf(os.Stderr, "  --session NAME Use specific tmux session name (default: onion)\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
@@ -214,8 +221,33 @@ func main() {
 	var results []Result
 	start := time.Now()
 
-	if !*flagJSON {
-		printf("🚀 Running local CI pipeline...\n\n")
+	// Initialize remote executor if --remote flag is set
+	var remoteExec *RemoteExecutor
+	if *flagRemote != "" {
+		if !*flagJSON {
+			printf("🚀 Running local CI pipeline remotely on %s...\n\n", *flagRemote)
+		}
+		remoteExec = NewRemoteExecutor(*flagRemote, *flagSession, cwd, 30*time.Second, *flagVerbose)
+
+		// Test SSH connection
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		if err := remoteExec.TestSSHConnection(ctx); err != nil {
+			cancel()
+			fatalf("Cannot connect to remote host %s: %v", *flagRemote, err)
+		}
+		cancel()
+
+		// Ensure remote session exists
+		ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+		if err := remoteExec.EnsureRemoteSession(ctx); err != nil {
+			cancel()
+			fatalf("Cannot create remote tmux session: %v", err)
+		}
+		cancel()
+	} else {
+		if !*flagJSON {
+			printf("🚀 Running local CI pipeline...\n\n")
+		}
 	}
 
 	for _, stage := range stages {
@@ -246,55 +278,65 @@ func main() {
 			}
 		}
 
-		// Run stage with timeout
-		timeout := time.Duration(stage.Timeout) * time.Second
-		if timeout == 0 {
-			timeout = 30 * time.Second
-		}
+		var result Result
 
-		ctx, cancel := context.WithTimeout(context.Background(), timeout)
-		cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
-		var out bytes.Buffer
-		cmd.Stdout = &out
-		cmd.Stderr = &out
-		cmd.Dir = cwd
-
-		err := cmd.Run()
-		cancel()
-		duration := time.Since(stageStart)
-
-		if err != nil {
-			if !*flagJSON {
-				printf("%s\n", out.String())
-				printf("::endgroup::\n")
-				printf("✗ %s (failed)\n", stage.Name)
-			}
-			results = append(results, Result{
-				Name:     stage.Name,
-				Command:  cmdStr,
-				Status:   "fail",
-				Duration: duration,
-				Error:    err,
-				Output:   out.String(),
-			})
-			if *flagFailFast {
-				break
-			}
+		// Execute stage (local or remote)
+		if remoteExec != nil {
+			// Remote execution
+			result = remoteExec.ExecuteStage(stage)
 		} else {
-			if !*flagJSON {
-				if *flagVerbose {
-					printf("%s\n", out.String())
-				}
-				printf("::endgroup::\n")
-				printf("✓ %s (%dms)\n", stage.Name, duration.Milliseconds())
+			// Local execution
+			timeout := time.Duration(stage.Timeout) * time.Second
+			if timeout == 0 {
+				timeout = 30 * time.Second
 			}
-			results = append(results, Result{
+
+			ctx, cancel := context.WithTimeout(context.Background(), timeout)
+			cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
+			var out bytes.Buffer
+			cmd.Stdout = &out
+			cmd.Stderr = &out
+			cmd.Dir = cwd
+
+			err := cmd.Run()
+			cancel()
+			duration := time.Since(stageStart)
+
+			result = Result{
 				Name:     stage.Name,
 				Command:  cmdStr,
 				Status:   "pass",
 				Duration: duration,
 				Output:   out.String(),
-			})
+			}
+			if err != nil {
+				result.Status = "fail"
+				result.Error = err
+			}
+		}
+
+		// Post-process and output result
+		if result.Status == "fail" {
+			if !*flagJSON {
+				if result.Output != "" {
+					printf("%s\n", result.Output)
+				}
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", result.Name)
+			}
+			results = append(results, result)
+			if *flagFailFast {
+				break
+			}
+		} else {
+			if !*flagJSON {
+				if *flagVerbose && result.Output != "" {
+					printf("%s\n", result.Output)
+				}
+				printf("::endgroup::\n")
+				printf("✓ %s (%dms)\n", result.Name, result.Duration.Milliseconds())
+			}
+			results = append(results, result)
 			// Update cache
 			cache[stage.Name] = stageCacheKey
 		}
