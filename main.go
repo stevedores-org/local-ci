@@ -33,15 +33,16 @@ import (
 	"time"
 )
 
-var version = "0.2.0"
+var version = "0.4.0" // Parallel stage execution with dependency graph
 
 type Stage struct {
-	Name    string
-	Cmd     []string
-	FixCmd  []string // command to run with --fix flag
-	Check   bool     // true if this is a --check command
-	Timeout int      // in seconds
-	Enabled bool
+	Name      string
+	Cmd       []string
+	FixCmd    []string // command to run with --fix flag
+	Check     bool     // true if this is a --check command
+	Timeout   int      // in seconds
+	Enabled   bool
+	DependsOn string   `toml:"depends_on"` // stage that must complete before this one
 }
 
 type Result struct {
@@ -74,14 +75,16 @@ type ResultJSON struct {
 
 func main() {
 	var (
-		flagNoCache  = flag.Bool("no-cache", false, "Disable file hash cache")
-		flagVerbose  = flag.Bool("verbose", false, "Show detailed output")
-		flagFix      = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
-		flagFailFast = flag.Bool("fail-fast", false, "Stop on first failed stage")
-		flagJSON     = flag.Bool("json", false, "Emit machine-readable JSON report")
-		flagList     = flag.Bool("list", false, "List available stages")
-		flagVersion  = flag.Bool("version", false, "Print version")
-		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagNoCache   = flag.Bool("no-cache", false, "Disable file hash cache")
+		flagVerbose   = flag.Bool("verbose", false, "Show detailed output")
+		flagFix       = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagFailFast  = flag.Bool("fail-fast", false, "Stop on first failed stage")
+		flagJSON      = flag.Bool("json", false, "Emit machine-readable JSON report")
+		flagList      = flag.Bool("list", false, "List available stages")
+		flagVersion   = flag.Bool("version", false, "Print version")
+		flagAll       = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagParallel  = flag.Bool("parallel", false, "Run independent stages concurrently")
+		flagJobs      = flag.Int("j", 0, "Max concurrent stages (0 = auto, implies --parallel)")
 	)
 
 	flag.Usage = func() {
@@ -225,6 +228,54 @@ func main() {
 		printf("🚀 Running local CI pipeline...\n\n")
 	}
 
+	// Parallel execution mode
+	useParallel := *flagParallel || *flagJobs > 0
+	if useParallel {
+		pr := &ParallelRunner{
+			Stages:      stages,
+			Concurrency: *flagJobs,
+			Cwd:         cwd,
+			NoCache:     *flagNoCache,
+			Cache:       cache,
+			SourceHash:  sourceHash,
+			Verbose:     *flagVerbose,
+			JSON:        *flagJSON,
+			FailFast:    *flagFailFast,
+		}
+
+		parallelResults, err := pr.RunParallel()
+		if err != nil {
+			fatalf("Parallel execution failed: %v", err)
+		}
+		results = parallelResults
+
+		// Update cache for passing stages
+		for _, r := range results {
+			if r.Status == "pass" && !r.CacheHit {
+				cache[r.Name] = sourceHash + "|" + r.Command
+			}
+		}
+
+		// Print results
+		if !*flagJSON {
+			for _, r := range results {
+				if r.Status == "fail" {
+					if r.Output != "" {
+						printf("%s\n", r.Output)
+					}
+					printf("✗ %s (failed)\n", r.Name)
+				} else if !r.CacheHit {
+					if *flagVerbose && r.Output != "" {
+						printf("%s\n", r.Output)
+					}
+					printf("✓ %s (%dms)\n", r.Name, r.Duration.Milliseconds())
+				} else if *flagVerbose {
+					printf("✓ %s (cached)\n", r.Name)
+				}
+			}
+		}
+	} else {
+	// Sequential execution (default)
 	for _, stage := range stages {
 		stageStart := time.Now()
 		cmdStr := strings.Join(stage.Cmd, " ")
@@ -305,6 +356,7 @@ func main() {
 			// Update cache
 			cache[stage.Name] = stageCacheKey
 		}
+	}
 	}
 
 	// Save cache
