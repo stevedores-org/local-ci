@@ -171,7 +171,7 @@ func getGoStages() map[string]Stage {
 	return map[string]Stage{
 		"fmt": {
 			Name:    "fmt",
-			Cmd:     []string{"go", "fmt", "./..."},
+			Cmd:     []string{"gofmt", "-l", "."},
 			FixCmd:  []string{"go", "fmt", "./..."},
 			Check:   true,
 			Timeout: 120,
@@ -404,7 +404,7 @@ skip_dirs = [".git", ".github", "scripts", ".claude", "vendor"]
 include_patterns = ["*.go", "go.mod", "go.sum"]
 
 [stages.fmt]
-command = ["go", "fmt", "./..."]
+command = ["gofmt", "-l", "."]
 fix_command = ["go", "fmt", "./..."]
 timeout = 120
 enabled = true

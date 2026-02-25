@@ -2,9 +2,9 @@ name: CI
 
 on:
   push:
-    branches: [ main ]
+    branches: [main, develop]
   pull_request:
-    branches: [ main ]
+    branches: [main, develop]
 
 jobs:
   test:
@@ -24,15 +24,6 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
-      - name: Build
-        run: go build -v .
-
-      - name: Run Tests
-        run: go test -v ./...
-
-      - name: Go Vet
-        run: go vet ./...
-
       - name: Check Formatting
         run: |
           if [ -n "$(gofmt -l .)" ]; then
@@ -40,3 +31,12 @@ jobs:
             gofmt -l .
             exit 1
           fi
+
+      - name: Go Vet
+        run: go vet ./...
+
+      - name: Build
+        run: go build -v .
+
+      - name: Run Tests
+        run: go test -v ./...

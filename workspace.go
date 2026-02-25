@@ -42,7 +42,18 @@ func DetectWorkspace(root string) (*Workspace, error) {
 		return DetectTypeScriptWorkspace(root)
 	}
 
-	// Default: Single-member workspace for Go, etc.
+	// Try go.mod (Go)
+	goModPath := filepath.Join(root, "go.mod")
+	if _, err := os.Stat(goModPath); err == nil {
+		return &Workspace{
+			Root:     root,
+			Members:  []string{"."},
+			IsSingle: true,
+		}, nil
+	}
+
+	// No recognized project indicator found — return default with warning
+	fmt.Fprintf(os.Stderr, "warning: no Cargo.toml, package.json, or go.mod found in %s; using default single-member workspace\n", root)
 	return &Workspace{
 		Root:     root,
 		Members:  []string{"."},
