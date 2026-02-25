@@ -85,6 +85,7 @@ func main() {
 		flagAll       = flag.Bool("all", false, "Run all stages including disabled ones")
 		flagParallel  = flag.Bool("parallel", false, "Run independent stages concurrently")
 		flagJobs      = flag.Int("j", 0, "Max concurrent stages (0 = auto, implies --parallel)")
+		flagDryRun    = flag.Bool("dry-run", false, "Show what would run without executing")
 	)
 
 	flag.Usage = func() {
@@ -218,6 +219,17 @@ func main() {
 	}
 	if cache == nil {
 		cache = make(map[string]string)
+	}
+
+	// Dry-run mode
+	if *flagDryRun {
+		report := BuildDryRunReport(cwd, sourceHash, config.Stages, stages, cache, *flagNoCache)
+		if *flagJSON {
+			PrintDryRunJSON(report)
+		} else {
+			PrintDryRunHuman(report)
+		}
+		return
 	}
 
 	// Run stages
