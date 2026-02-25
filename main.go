@@ -116,7 +116,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, Node.js, Go, Java, and custom projects\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
-		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")
+		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n")
+		fmt.Fprintf(os.Stderr, "  serve     Start MCP server on stdio for AI agent integration\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  local-ci              Run enabled stages for your project\n")
 		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
@@ -151,6 +152,12 @@ func main() {
 			}
 			return
 		}
+	}
+	if len(args) > 0 && args[0] == "serve" {
+		if err := cmdServe(cwd); err != nil {
+			fatalf("MCP server error: %v", err)
+		}
+		return
 	}
 
 	// Load configuration
