@@ -23,18 +23,32 @@ func TestGetEnabledStages(t *testing.T) {
 		t.Errorf("expected 3 enabled stages, got %d: %v", len(enabled), enabled)
 	}
 
-	// All enabled stages should be in the list
-	enabledSet := make(map[string]bool)
-	for _, name := range enabled {
-		enabledSet[name] = true
-	}
-	for _, name := range []string{"fmt", "clippy", "test"} {
-		if !enabledSet[name] {
-			t.Errorf("expected %q in enabled stages", name)
+	// Verify deterministic priority order: fmt < clippy < test
+	expected := []string{"fmt", "clippy", "test"}
+	for i, name := range expected {
+		if enabled[i] != name {
+			t.Errorf("position %d: expected %q, got %q (full order: %v)", i, name, enabled[i], enabled)
 		}
 	}
-	if enabledSet["check"] || enabledSet["deny"] {
-		t.Error("disabled stages should not appear in enabled list")
+}
+
+func TestGetEnabledStagesUnknownStagesSortAlphabetically(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"test":  {Name: "test", Enabled: true},
+			"zeta":  {Name: "zeta", Enabled: true},
+			"alpha": {Name: "alpha", Enabled: true},
+			"fmt":   {Name: "fmt", Enabled: true},
+		},
+	}
+
+	enabled := config.GetEnabledStages()
+	// Known stages first in priority order, then unknown alphabetically
+	expected := []string{"fmt", "test", "alpha", "zeta"}
+	for i, name := range expected {
+		if enabled[i] != name {
+			t.Errorf("position %d: expected %q, got %q (full order: %v)", i, name, enabled[i], enabled)
+		}
 	}
 }
 
@@ -75,55 +89,12 @@ func TestGetTimeoutUnknownStage(t *testing.T) {
 	}
 }
 
-func TestToStageConfigs(t *testing.T) {
-	config := &Config{
-		Stages: map[string]Stage{
-			"fmt": {
-				Name:    "fmt",
-				Cmd:     []string{"cargo", "fmt", "--all", "--", "--check"},
-				FixCmd:  []string{"cargo", "fmt", "--all"},
-				Timeout: 120,
-				Enabled: true,
-			},
-			"test": {
-				Name:    "test",
-				Cmd:     []string{"cargo", "test"},
-				FixCmd:  nil,
-				Timeout: 600,
-				Enabled: true,
-			},
-		},
-	}
-
-	stageConfigs := config.ToStageConfigs()
-
-	if len(stageConfigs) != 2 {
-		t.Fatalf("expected 2 stage configs, got %d", len(stageConfigs))
-	}
-
-	fmtCfg := stageConfigs["fmt"]
-	if fmtCfg.Timeout != 120 {
-		t.Errorf("fmt timeout: expected 120, got %d", fmtCfg.Timeout)
-	}
-	if !fmtCfg.Enabled {
-		t.Error("fmt should be enabled")
-	}
-	if len(fmtCfg.FixCommand) != 3 {
-		t.Errorf("expected 3 fix command args, got %d", len(fmtCfg.FixCommand))
-	}
-
-	testCfg := stageConfigs["test"]
-	if testCfg.FixCommand != nil {
-		t.Error("test stage should have nil FixCommand")
-	}
-}
-
 func TestLoadConfigMalformedTOML(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"x\"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte("this is not valid toml {{{}}}"), 0644)
 
-	_, err := LoadConfig(dir, ProjectKindRust)
+	_, err := LoadConfig(dir)
 	if err == nil {
 		t.Error("expected error for malformed TOML config")
 	}
@@ -141,7 +112,7 @@ enabled = true
 `
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte(configContent), 0644)
 
-	config, err := LoadConfig(dir, ProjectKindRust)
+	config, err := LoadConfig(dir)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}

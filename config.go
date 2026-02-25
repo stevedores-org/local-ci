@@ -4,32 +4,42 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
 )
 
+// stagePriority defines the canonical execution order.
+// Fast checks run first for best --fail-fast behavior.
+// Stages not in this list sort alphabetically after known stages.
+var stagePriority = map[string]int{
+	"fmt":     0,
+	"clippy":  1,
+	"check":   2,
+	"test":    3,
+	"deny":    4,
+	"audit":   5,
+	"machete": 6,
+	"taplo":   7,
+	// TypeScript stages
+	"lint":      0,
+	"typecheck": 1,
+	"build":     5,
+}
+
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache       CacheConfig       `toml:"cache"`
-	Stages      map[string]Stage  `toml:"stages"`
+	Cache        CacheConfig      `toml:"cache"`
+	Stages       map[string]Stage `toml:"stages"`
 	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace   WorkspaceConfig   `toml:"workspace"`
+	Workspace    WorkspaceConfig  `toml:"workspace"`
 }
 
 // CacheConfig defines caching behavior
 type CacheConfig struct {
-	SkipDirs       []string `toml:"skip_dirs"`
+	SkipDirs        []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
-}
-
-// StageConfig defines a CI stage
-type StageConfig struct {
-	Command              []string      `toml:"command"`
-	FixCommand           []string      `toml:"fix_command"`
-	Timeout              int           `toml:"timeout"` // seconds
-	Enabled              bool          `toml:"enabled"`
-	RespectWorkspaceExcludes bool      `toml:"respect_workspace_excludes"`
 }
 
 // DepsConfig defines system dependencies
@@ -44,28 +54,29 @@ type WorkspaceConfig struct {
 }
 
 // LoadConfig loads configuration from .local-ci.toml or returns defaults.
-// The kind parameter selects Rust or TypeScript defaults when no config file exists.
-func LoadConfig(root string, kind ProjectKind) (*Config, error) {
+// Auto-detects project type for language-specific defaults when no config file exists.
+func LoadConfig(root string) (*Config, error) {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
-	var cfg *Config
-	if kind == ProjectKindTypeScript {
-		cfg = defaultTypeScriptConfig()
-	} else {
-		cfg = &Config{
-			Cache: CacheConfig{
-				SkipDirs:        []string{".git", "target", ".github", "scripts", ".claude"},
-				IncludePatterns: []string{"*.rs", "*.toml"},
-			},
-			Stages: defaultStages(),
-			Dependencies: DepsConfig{
-				Required: []string{},
-				Optional: []string{},
-			},
-			Workspace: WorkspaceConfig{
-				Exclude: []string{},
-			},
-		}
+	// Detect project type for smart defaults
+	projectType := DetectProjectType(root)
+	defaultStages := GetDefaultStagesForType(projectType)
+	cachePatterns := GetCachePatternForType(projectType)
+	skipDirs := GetSkipDirsForType(projectType)
+
+	cfg := &Config{
+		Cache: CacheConfig{
+			SkipDirs:        skipDirs,
+			IncludePatterns: cachePatterns,
+		},
+		Stages: defaultStages,
+		Dependencies: DepsConfig{
+			Required: []string{},
+			Optional: []string{},
+		},
+		Workspace: WorkspaceConfig{
+			Exclude: []string{},
+		},
 	}
 
 	// Try to load from file
@@ -82,14 +93,14 @@ func LoadConfig(root string, kind ProjectKind) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
 	}
 
-	// Merge defaults for stages not specified
-	var defaults map[string]Stage
-	if kind == ProjectKindTypeScript {
-		defaults = defaultTypeScriptStages()
-	} else {
-		defaults = defaultStages()
+	// Set stage names from map keys (Name is toml:"-")
+	for name, stage := range cfg.Stages {
+		stage.Name = name
+		cfg.Stages[name] = stage
 	}
-	for name, defaultStage := range defaults {
+
+	// Merge defaults for stages not specified (but keep file values if set)
+	for name, defaultStage := range defaultStages {
 		if _, exists := cfg.Stages[name]; !exists {
 			cfg.Stages[name] = defaultStage
 		}
@@ -113,85 +124,16 @@ func SaveDefaultConfig(root string, wsConfig *Workspace) error {
 		return fmt.Errorf("config file already exists at %s", configPath)
 	}
 
-	// Write default config as text (template-based)
-	defaultConfig := `# local-ci configuration
-# See: https://github.com/stevedores-org/local-ci
-#
-# Core stages run by default: fmt, clippy, test
-# Optional tool stages available below (requires installation):
-#   - deny: cargo-deny (security/license checking)
-#   - audit: cargo-audit (CVE vulnerability scanning)
-#   - machete: cargo-machete (unused dependencies)
-#   - taplo: taplo-cli (TOML formatting)
-
-[cache]
-# Directories to skip when computing source hash
-skip_dirs = [".git", "target", ".github", "scripts", ".claude", "node_modules"]
-# File patterns to include in hash
-include_patterns = ["*.rs", "*.toml"]
-
-[stages.fmt]
-command = ["cargo", "fmt", "--all", "--", "--check"]
-fix_command = ["cargo", "fmt", "--all"]
-timeout = 120
-enabled = true
-
-[stages.clippy]
-command = ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
-timeout = 600
-enabled = true
-
-[stages.test]
-command = ["cargo", "test", "--workspace"]
-timeout = 1200
-enabled = true
-
-[stages.check]
-command = ["cargo", "check", "--workspace"]
-timeout = 600
-enabled = false
-
-# Optional: Cargo tools (uncomment to enable)
-# Install with: cargo install cargo-deny
-[stages.deny]
-command = ["cargo", "deny", "check"]
-timeout = 300
-enabled = false
-
-# Install with: cargo install cargo-audit
-[stages.audit]
-command = ["cargo", "audit"]
-timeout = 300
-enabled = false
-
-# Install with: cargo install cargo-machete
-[stages.machete]
-command = ["cargo", "machete"]
-timeout = 300
-enabled = false
-
-# Install with: cargo install taplo-cli
-[stages.taplo]
-command = ["taplo", "format", "--check", "."]
-fix_command = ["taplo", "format", "."]
-timeout = 300
-enabled = false
-
-[dependencies]
-# System dependencies required (uncomment if needed)
-# required = ["protoc", "clang"]
-optional = []
-
-[workspace]
-# Workspace members to exclude (auto-detected from Cargo.toml)
-exclude = []
-`
+	// Detect project type and get appropriate template
+	projectType := DetectProjectType(root)
+	defaultConfig := GetConfigTemplateForType(projectType)
 
 	// Write to file
 	if err := os.WriteFile(configPath, []byte(defaultConfig), 0644); err != nil {
 		return fmt.Errorf("failed to write config file: %w", err)
 	}
 
+	fmt.Printf("Generated .local-ci.toml for %s project\n", projectType)
 	return nil
 }
 
@@ -265,21 +207,6 @@ func defaultStages() map[string]Stage {
 	}
 }
 
-// ToStageConfigs converts the config stages map to Stage structs
-func (c *Config) ToStageConfigs() map[string]StageConfig {
-	result := make(map[string]StageConfig)
-	for name, stage := range c.Stages {
-		result[name] = StageConfig{
-			Command:              stage.Cmd,
-			FixCommand:           stage.FixCmd,
-			Timeout:              stage.Timeout,
-			Enabled:              stage.Enabled,
-			RespectWorkspaceExcludes: false,
-		}
-	}
-	return result
-}
-
 // GetTimeout returns the timeout for a stage, with fallback to default
 func (c *Config) GetTimeout(stageName string) time.Duration {
 	if stage, ok := c.Stages[stageName]; ok && stage.Timeout > 0 {
@@ -288,7 +215,9 @@ func (c *Config) GetTimeout(stageName string) time.Duration {
 	return 30 * time.Second // Safe default
 }
 
-// GetEnabledStages returns the list of enabled stage names
+// GetEnabledStages returns the list of enabled stage names in deterministic
+// priority order (fast checks first). Stages without an explicit priority
+// sort alphabetically after known stages.
 func (c *Config) GetEnabledStages() []string {
 	var enabled []string
 	for name, stage := range c.Stages {
@@ -296,5 +225,19 @@ func (c *Config) GetEnabledStages() []string {
 			enabled = append(enabled, name)
 		}
 	}
+	sort.Slice(enabled, func(i, j int) bool {
+		pi, oki := stagePriority[enabled[i]]
+		pj, okj := stagePriority[enabled[j]]
+		if oki && okj {
+			return pi < pj
+		}
+		if oki {
+			return true // known stages come first
+		}
+		if okj {
+			return false
+		}
+		return enabled[i] < enabled[j] // alphabetical fallback
+	})
 	return enabled
 }
