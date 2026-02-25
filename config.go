@@ -93,12 +93,6 @@ func LoadConfig(root string) (*Config, error) {
 		return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
 	}
 
-	// Set stage names from map keys (Name is toml:"-")
-	for name, stage := range cfg.Stages {
-		stage.Name = name
-		cfg.Stages[name] = stage
-	}
-
 	// Merge defaults for stages not specified (but keep file values if set)
 	for name, defaultStage := range defaultStages {
 		if _, exists := cfg.Stages[name]; !exists {
