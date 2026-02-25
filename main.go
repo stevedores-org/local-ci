@@ -31,9 +31,20 @@ import (
 var version = "0.1.0"
 
 type Stage struct {
+<<<<<<< Updated upstream
 	Name  string
 	Cmd   []string
 	Check bool // true if this is a --check command
+=======
+	Name      string
+	Cmd       []string
+	FixCmd    []string   // command to run with --fix flag
+	Check     bool       // true if this is a --check command
+	Timeout   int        // in seconds
+	Enabled   bool
+	DependsOn []string   // stage names this stage depends on
+	Watch     []string   // file patterns this stage cares about (for granular caching)
+>>>>>>> Stashed changes
 }
 
 type Result struct {
@@ -52,16 +63,38 @@ func main() {
 		flagFix      = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
 		flagList     = flag.Bool("list", false, "List available stages")
 		flagVersion  = flag.Bool("version", false, "Print version")
+<<<<<<< Updated upstream
+=======
+		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote   = flag.Bool("remote", false, "Load remote config from .local-ci-remote.toml")
+		flagProfile  = flag.String("profile", "", "Use a named profile from config")
+		flagDryRun   = flag.Bool("dry-run", false, "Show what would run without executing")
+		flagParallel = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
+		flagJSON     = flag.Bool("json", false, "Output in JSON format")
+		flagFailFast = flag.Bool("fail-fast", false, "Stop on first failure")
+>>>>>>> Stashed changes
 	)
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust workspaces\n\n", version)
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
+<<<<<<< Updated upstream
 		fmt.Fprintf(os.Stderr, "Stages:\n")
 		fmt.Fprintf(os.Stderr, "  fmt       Format check (cargo fmt --check)\n")
 		fmt.Fprintf(os.Stderr, "  clippy    Linter (cargo clippy -D warnings)\n")
 		fmt.Fprintf(os.Stderr, "  test      Tests (cargo test --workspace)\n")
 		fmt.Fprintf(os.Stderr, "  check     Compile check (cargo check)\n\n")
+=======
+		fmt.Fprintf(os.Stderr, "Commands:\n")
+		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  local-ci              Run enabled stages for your project\n")
+		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --fix        Auto-fix format/lint issues\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --profile ci Run stages from 'ci' profile\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --dry-run    Show what would run\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --list       List all available stages\n\n")
+>>>>>>> Stashed changes
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
 	}
@@ -77,6 +110,67 @@ func main() {
 		fatalf("Cannot get working directory: %v", err)
 	}
 
+<<<<<<< Updated upstream
+=======
+	// Handle subcommands
+	args := flag.Args()
+	if len(args) > 0 {
+		if args[0] == "init" {
+			cmdInit(cwd)
+			return
+		} else if args[0] == "serve" {
+			cmdServe(cwd)
+			return
+		}
+	}
+
+	// Load configuration
+	config, err := LoadConfig(cwd, *flagRemote)
+	if err != nil {
+		fatalf("Failed to load config: %v", err)
+	}
+
+	// Apply profile if specified
+	if *flagProfile != "" {
+		profile, ok := config.Profiles[*flagProfile]
+		if !ok {
+			fatalf("Profile '%s' not found in config", *flagProfile)
+		}
+
+		// Override flag values with profile settings
+		if profile.NoCache {
+			*flagNoCache = true
+		}
+		if profile.FailFast {
+			*flagFailFast = true
+		}
+		if profile.JSON {
+			*flagJSON = true
+		}
+
+		// Disable all stages first, then enable only the ones in the profile
+		for name := range config.Stages {
+			stage := config.Stages[name]
+			stage.Enabled = false
+			config.Stages[name] = stage
+		}
+
+		// Enable only stages from the profile
+		for _, stageName := range profile.Stages {
+			if stage, ok := config.Stages[stageName]; ok {
+				stage.Enabled = true
+				config.Stages[stageName] = stage
+			}
+		}
+	}
+
+	// Detect workspace
+	ws, err := DetectWorkspace(cwd)
+	if err != nil && *flagVerbose {
+		warnf("Workspace detection failed: %v", err)
+	}
+
+>>>>>>> Stashed changes
 	if *flagList {
 		fmt.Printf("Available stages: fmt, clippy, test, check\n")
 		return
@@ -135,9 +229,15 @@ func main() {
 	}
 
 	// Compute source hash
+<<<<<<< Updated upstream
 	sourceHash, err := computeSourceHash(cwd)
 	if err != nil && *flagVerbose {
 		warnf("Hash computation failed: %v", err)
+=======
+	sourceHash, err := computeSourceHash(cwd, config, ws)
+	if err != nil {
+		warnf("Warning: hash computation failed: %v\n", err)
+>>>>>>> Stashed changes
 		*flagNoCache = true
 	}
 
@@ -150,17 +250,58 @@ func main() {
 		cache = make(map[string]string)
 	}
 
+	// Handle dry-run mode
+	if *flagDryRun {
+		report := BuildDryRunReport(stages, cache, sourceHash, *flagNoCache)
+		if *flagJSON {
+			PrintDryRunJSON(report)
+		} else {
+			PrintDryRunHuman(report)
+		}
+		return
+	}
+
 	// Run stages
 	var results []Result
 	start := time.Now()
 
-	printf("🚀 Running local CI pipeline...\n\n")
+	// Use parallel runner if requested
+	if *flagParallel > 0 {
+		runner := &ParallelRunner{
+			Stages:      stages,
+			Concurrency: *flagParallel,
+			Cwd:         cwd,
+			NoCache:     *flagNoCache,
+			Cache:       cache,
+			SourceHash:  sourceHash,
+			Verbose:     *flagVerbose,
+			JSON:        *flagJSON,
+			FailFast:    *flagFailFast,
+		}
+		results = runner.Run()
+	} else {
+		// Sequential execution
+		printf("🚀 Running local CI pipeline...\n\n")
 
+<<<<<<< Updated upstream
 	for _, stage := range toRun {
+=======
+		for _, stage := range stages {
+>>>>>>> Stashed changes
 		stageStart := time.Now()
 
-		// Check cache
-		if !*flagNoCache && cache[stage.Name] == sourceHash {
+		// Compute per-stage hash for granular caching
+		stageHash := sourceHash
+		if len(stage.Watch) > 0 {
+			var err error
+			stageHash, err = computeStageHash(stage, cwd, config, ws)
+			if err != nil && *flagVerbose {
+				warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+			}
+		}
+
+		// Check cache using per-stage hash
+		if !*flagNoCache && cache[stage.Name] == stageHash {
 			if *flagVerbose {
 				printf("✓ %s (cached)\n", stage.Name)
 			}
@@ -203,8 +344,9 @@ func main() {
 				Duration: duration,
 				Output:   out.String(),
 			})
-			// Update cache
-			cache[stage.Name] = sourceHash
+			// Update cache with per-stage hash
+			cache[stage.Name] = stageHash
+		}
 		}
 	}
 
@@ -256,6 +398,85 @@ func computeSourceHash(root string) (string, error) {
 				return nil // Skip unreadable files
 			}
 			h.Write(data)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// computeStageHash computes MD5 hash for a specific stage based on its watch patterns
+func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (string, error) {
+	h := md5.New()
+
+	// If no watch patterns, use global hash
+	if len(stage.Watch) == 0 {
+		return computeSourceHash(root, config, ws)
+	}
+
+	// Build skip set from config
+	skipDirs := make(map[string]bool)
+	for _, dir := range config.Cache.SkipDirs {
+		skipDirs[dir] = true
+	}
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories in config
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+		}
+
+		// Skip excluded workspace members
+		if ws != nil && !ws.IsSingle {
+			relPath, err := filepath.Rel(root, path)
+			if err == nil && ws.IsExcluded(relPath) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
+		// Hash files matching watch patterns
+		if !d.IsDir() {
+			shouldHash := false
+			for _, pattern := range stage.Watch {
+				// Simple pattern matching: *.rs, *.toml
+				if strings.HasPrefix(pattern, "*.") {
+					ext := pattern[1:] // Get .rs or .toml
+					if strings.HasSuffix(d.Name(), ext) {
+						shouldHash = true
+						break
+					}
+				} else if pattern == "*" {
+					// Match all files
+					shouldHash = true
+					break
+				} else if d.Name() == pattern {
+					// Exact filename match
+					shouldHash = true
+					break
+				}
+			}
+
+			if shouldHash {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return nil // Skip unreadable files
+				}
+				h.Write(data)
+			}
 		}
 
 		return nil
