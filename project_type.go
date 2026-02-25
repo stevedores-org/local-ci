@@ -9,12 +9,13 @@ import (
 type ProjectType string
 
 const (
-	ProjectTypeRust     ProjectType = "rust"
-	ProjectTypePython   ProjectType = "python"
-	ProjectTypeNode     ProjectType = "node"
-	ProjectTypeGo       ProjectType = "go"
-	ProjectTypeJava     ProjectType = "java"
-	ProjectTypeGeneric  ProjectType = "generic"
+	ProjectTypeRust       ProjectType = "rust"
+	ProjectTypePython     ProjectType = "python"
+	ProjectTypeNode       ProjectType = "node"
+	ProjectTypeTypeScript ProjectType = "typescript"
+	ProjectTypeGo         ProjectType = "go"
+	ProjectTypeJava       ProjectType = "java"
+	ProjectTypeGeneric    ProjectType = "generic"
 )
 
 // DetectProjectType analyzes the project root and determines its type
@@ -31,8 +32,14 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypePython
 	}
 
-	// Check for Node.js project files
+	// Check for Node.js/TypeScript project files
 	if fileExists(filepath.Join(root, "package.json")) {
+		hasTSConfig := fileExists(filepath.Join(root, "tsconfig.json"))
+		hasBunfig := fileExists(filepath.Join(root, "bunfig.toml"))
+		hasBunLock := fileExists(filepath.Join(root, "bun.lock")) || fileExists(filepath.Join(root, "bun.lockb"))
+		if hasTSConfig || hasBunfig || hasBunLock {
+			return ProjectTypeTypeScript
+		}
 		return ProjectTypeNode
 	}
 
@@ -59,6 +66,8 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 		return getPythonStages()
 	case ProjectTypeNode:
 		return getNodeStages()
+	case ProjectTypeTypeScript:
+		return defaultTypeScriptStages()
 	case ProjectTypeGo:
 		return getGoStages()
 	case ProjectTypeJava:
@@ -175,7 +184,7 @@ func getGoStages() map[string]Stage {
 			FixCmd:  []string{"go", "fmt", "./..."},
 			Check:   true,
 			Timeout: 120,
-			Enabled: false,
+			Enabled: true,
 		},
 		"vet": {
 			Name:    "vet",
@@ -183,7 +192,7 @@ func getGoStages() map[string]Stage {
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 300,
-			Enabled: false,
+			Enabled: true,
 		},
 		"test": {
 			Name:    "test",
@@ -191,7 +200,7 @@ func getGoStages() map[string]Stage {
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 600,
-			Enabled: false,
+			Enabled: true,
 		},
 	}
 }
@@ -239,8 +248,8 @@ func GetCachePatternForType(projectType ProjectType) []string {
 		return []string{"*.rs", "*.toml", "*.lock"}
 	case ProjectTypePython:
 		return []string{"*.py", "*.toml", "*.txt", "*.yml", "*.yaml"}
-	case ProjectTypeNode:
-		return []string{"*.js", "*.ts", "*.json", "package.json", "tsconfig.json"}
+	case ProjectTypeNode, ProjectTypeTypeScript:
+		return []string{"*.js", "*.ts", "*.tsx", "*.json", "package.json", "tsconfig.json"}
 	case ProjectTypeGo:
 		return []string{"*.go", "go.mod", "go.sum"}
 	case ProjectTypeJava:
@@ -259,8 +268,8 @@ func GetSkipDirsForType(projectType ProjectType) []string {
 		return append(baseSkip, "target")
 	case ProjectTypePython:
 		return append(baseSkip, ".pytest_cache", "__pycache__", ".mypy_cache")
-	case ProjectTypeNode:
-		return append(baseSkip, "node_modules", "dist", "build")
+	case ProjectTypeNode, ProjectTypeTypeScript:
+		return append(baseSkip, "node_modules", "dist", "build", ".next", "coverage")
 	case ProjectTypeGo:
 		return append(baseSkip, "vendor")
 	case ProjectTypeJava:
@@ -270,10 +279,10 @@ func GetSkipDirsForType(projectType ProjectType) []string {
 	}
 }
 
-// fileExists checks if a file exists
+// fileExists checks if a file exists and is not a directory
 func fileExists(path string) bool {
-	_, err := os.Stat(path)
-	return err == nil
+	info, err := os.Stat(path)
+	return err == nil && !info.IsDir()
 }
 
 // GetConfigTemplateForType returns a TOML config template for the project type
@@ -285,6 +294,8 @@ func GetConfigTemplateForType(projectType ProjectType) string {
 		return getPythonConfigTemplate()
 	case ProjectTypeNode:
 		return getNodeConfigTemplate()
+	case ProjectTypeTypeScript:
+		return getTypeScriptConfigTemplate()
 	case ProjectTypeGo:
 		return getGoConfigTemplate()
 	case ProjectTypeJava:
@@ -395,6 +406,45 @@ exclude = []
 `
 }
 
+func getTypeScriptConfigTemplate() string {
+	return `# local-ci configuration for TypeScript/Bun projects
+# See: https://github.com/stevedores-org/local-ci
+
+[cache]
+skip_dirs = [".git", "node_modules", "dist", ".next", "coverage", ".claude"]
+include_patterns = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.json"]
+
+[stages.typecheck]
+command = ["bun", "x", "tsc", "--noEmit"]
+timeout = 120
+enabled = true
+
+[stages.lint]
+command = ["bun", "run", "lint"]
+fix_command = ["bun", "run", "lint", "--", "--fix"]
+timeout = 300
+enabled = true
+
+[stages.test]
+command = ["bun", "test"]
+timeout = 600
+enabled = true
+
+[stages.format]
+command = ["bun", "run", "format", "--check"]
+fix_command = ["bun", "run", "format"]
+timeout = 120
+enabled = false
+
+[dependencies]
+required = []
+optional = []
+
+[workspace]
+exclude = []
+`
+}
+
 func getGoConfigTemplate() string {
 	return `# local-ci configuration for Go project
 # See: https://github.com/stevedores-org/local-ci
@@ -407,17 +457,17 @@ include_patterns = ["*.go", "go.mod", "go.sum"]
 command = ["go", "fmt", "./..."]
 fix_command = ["go", "fmt", "./..."]
 timeout = 120
-enabled = false
+enabled = true
 
 [stages.vet]
 command = ["go", "vet", "./..."]
 timeout = 300
-enabled = false
+enabled = true
 
 [stages.test]
 command = ["go", "test", "./..."]
 timeout = 600
-enabled = false
+enabled = true
 
 [dependencies]
 optional = []
@@ -456,13 +506,6 @@ exclude = []
 func getGenericConfigTemplate() string {
 	return `# local-ci configuration (Generic)
 # See: https://github.com/stevedores-org/local-ci
-#
-# Define your custom stages below. Example:
-#
-# [stages.test]
-# command = ["npm", "test"]
-# timeout = 600
-# enabled = true
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", "node_modules", "target", "build", "dist"]

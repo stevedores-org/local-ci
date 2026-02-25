@@ -29,6 +29,7 @@ Instructions for AI coding agents (Claude, Codex, Copilot, Cursor, Gemini) worki
 main.go           CLI entry, stage runner, source hashing, cache I/O
 config.go         .local-ci.toml schema, LoadConfig(), SaveDefaultConfig()
 workspace.go      Cargo.toml parsing, workspace member/exclude detection
+project_type.go   ProjectType detection and language-specific defaults
 toolcheck.go      cargo-deny/audit/machete/taplo detection
 hooks.go          Git pre-commit hook management
 nix-cache.go      Nix binary cache (attic) setup
@@ -39,7 +40,7 @@ Makefile          build, test, install, clean targets
 
 ## Adding a New CI Stage
 
-1. Add entry to `defaultStages()` in `config.go`
+1. Add entry to appropriate `get<Type>Stages()` in `project_type.go`
 2. If it requires a tool, add to `cargoTools` or `systemTools` in `toolcheck.go`
 3. Add test in `local_ci_test.go`
 4. Update `README.md` stage table

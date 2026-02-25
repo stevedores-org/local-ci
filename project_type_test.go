@@ -117,6 +117,23 @@ func TestGetDefaultStagesForPython(t *testing.T) {
 	}
 }
 
+// TestGetDefaultStagesForGo verifies Go-specific stages
+func TestGetDefaultStagesForGo(t *testing.T) {
+	stages := GetDefaultStagesForType(ProjectTypeGo)
+
+	expectedStages := []string{"fmt", "vet", "test"}
+	for _, stageName := range expectedStages {
+		stage, exists := stages[stageName]
+		if !exists {
+			t.Errorf("Expected stage %s not found for Go", stageName)
+			continue
+		}
+		if !stage.Enabled {
+			t.Errorf("Expected stage %s to be enabled by default for Go", stageName)
+		}
+	}
+}
+
 // TestGetDefaultStagesForNode verifies Node.js-specific stages
 func TestGetDefaultStagesForNode(t *testing.T) {
 	stages := GetDefaultStagesForType(ProjectTypeNode)
@@ -129,15 +146,27 @@ func TestGetDefaultStagesForNode(t *testing.T) {
 	}
 }
 
+// TestGetDefaultStagesForTypeScript verifies TypeScript-specific stages
+func TestGetDefaultStagesForTypeScript(t *testing.T) {
+	stages := GetDefaultStagesForType(ProjectTypeTypeScript)
+
+	expectedStages := []string{"typecheck", "lint", "test", "format"}
+	for _, stageName := range expectedStages {
+		if _, exists := stages[stageName]; !exists {
+			t.Errorf("Expected stage %s not found for TypeScript", stageName)
+		}
+	}
+}
+
 // TestGetCachePatternForType verifies cache patterns are language-specific
 func TestGetCachePatternForType(t *testing.T) {
 	tests := []struct {
-		projectType ProjectType
+		projectType   ProjectType
 		shouldContain string
 	}{
 		{ProjectTypeRust, "*.rs"},
 		{ProjectTypePython, "*.py"},
-		{ProjectTypeNode, "*.js"},
+		{ProjectTypeTypeScript, "*.js"},
 		{ProjectTypeGo, "*.go"},
 		{ProjectTypeJava, "*.java"},
 	}
@@ -160,12 +189,12 @@ func TestGetCachePatternForType(t *testing.T) {
 // TestGetSkipDirsForType verifies skip dirs are language-specific
 func TestGetSkipDirsForType(t *testing.T) {
 	tests := []struct {
-		projectType ProjectType
+		projectType   ProjectType
 		shouldContain string
 	}{
 		{ProjectTypeRust, "target"},
 		{ProjectTypePython, "__pycache__"},
-		{ProjectTypeNode, "node_modules"},
+		{ProjectTypeTypeScript, "node_modules"},
 		{ProjectTypeGo, "vendor"},
 		{ProjectTypeJava, "target"},
 	}
@@ -190,7 +219,7 @@ func TestGetConfigTemplateForType(t *testing.T) {
 	projectTypes := []ProjectType{
 		ProjectTypeRust,
 		ProjectTypePython,
-		ProjectTypeNode,
+		ProjectTypeTypeScript,
 		ProjectTypeGo,
 		ProjectTypeJava,
 		ProjectTypeGeneric,

@@ -8,12 +8,12 @@ import (
 
 // Tool represents a cargo tool or system dependency
 type Tool struct {
-	Name        string // Display name
-	Command     string // Command to check (e.g., "cargo-deny", "protoc")
-	CheckArgs   []string // Args to use for version check (e.g., ["deny", "help"])
-	InstallCmd  string // How to install
-	ToolType    string // "cargo", "system", "binary"
-	Optional    bool
+	Name       string   // Display name
+	Command    string   // Command to check (e.g., "cargo-deny", "protoc")
+	CheckArgs  []string // Args to use for version check (e.g., ["deny", "help"])
+	InstallCmd string   // How to install
+	ToolType   string   // "cargo", "system", "binary"
+	Optional   bool
 }
 
 var cargoTools = []Tool{
@@ -83,9 +83,9 @@ var systemTools = []Tool{
 
 // ToolCheck represents the result of checking for a tool
 type ToolCheck struct {
-	Tool      *Tool
-	Found     bool
-	Error     string
+	Tool  *Tool
+	Found bool
+	Error string
 }
 
 // CheckToolInstalled checks if a tool is installed
@@ -138,12 +138,12 @@ func GetMissingTools() []string {
 }
 
 // GetMissingToolsWithHints returns missing tools with installation hints for the given project kind.
-func GetMissingToolsWithHints(kind ProjectKind) map[string]string {
+func GetMissingToolsWithHints(kind ProjectType) map[string]string {
 	hints := make(map[string]string)
 
 	var tools []Tool
 	switch kind {
-	case ProjectKindTypeScript:
+	case ProjectTypeTypeScript:
 		tools = append(tools, bunTools...)
 	default:
 		tools = append(tools, cargoTools...)

@@ -9,89 +9,70 @@ import (
 
 // --- Project kind detection tests ---
 
-func TestDetectProjectKindRust(t *testing.T) {
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"test\"\n"), 0644)
-
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindRust {
-		t.Errorf("expected %q, got %q", ProjectKindRust, kind)
-	}
-}
-
-func TestDetectProjectKindTypeScript(t *testing.T) {
+func TestDetectProjectTypeTypeScriptWithTSConfig(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 	os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte(`{}`), 0644)
 
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindTypeScript {
-		t.Errorf("expected %q, got %q", ProjectKindTypeScript, kind)
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeTypeScript {
+		t.Errorf("expected %q, got %q", ProjectTypeTypeScript, kind)
 	}
 }
 
-func TestDetectProjectKindBunfig(t *testing.T) {
+func TestDetectProjectTypeBunfig(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 	os.WriteFile(filepath.Join(dir, "bunfig.toml"), []byte(""), 0644)
 
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindTypeScript {
-		t.Errorf("expected %q, got %q", ProjectKindTypeScript, kind)
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeTypeScript {
+		t.Errorf("expected %q, got %q", ProjectTypeTypeScript, kind)
 	}
 }
 
-func TestDetectProjectKindBothPreferRust(t *testing.T) {
+func TestDetectProjectTypeBothPreferRust(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"test\"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 	os.WriteFile(filepath.Join(dir, "tsconfig.json"), []byte(`{}`), 0644)
 
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindRust {
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeRust {
 		t.Errorf("expected Rust to take priority, got %q", kind)
 	}
 }
 
-func TestDetectProjectKindUnknown(t *testing.T) {
-	dir := t.TempDir()
-
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindUnknown {
-		t.Errorf("expected %q, got %q", ProjectKindUnknown, kind)
-	}
-}
-
-func TestDetectProjectKindPackageJSONAlone(t *testing.T) {
-	// package.json without tsconfig, bunfig, or bun.lock → unknown
+func TestDetectProjectTypePackageJSONAlone(t *testing.T) {
+	// package.json without tsconfig, bunfig, or bun.lock → node
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindUnknown {
-		t.Errorf("expected %q for package.json without TS/Bun indicator, got %q", ProjectKindUnknown, kind)
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeNode {
+		t.Errorf("expected %q for package.json without TS/Bun indicator, got %q", ProjectTypeNode, kind)
 	}
 }
 
-func TestDetectProjectKindBunLock(t *testing.T) {
+func TestDetectProjectTypeBunLock(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 	os.WriteFile(filepath.Join(dir, "bun.lock"), []byte(""), 0644)
 
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindTypeScript {
-		t.Errorf("expected %q for package.json + bun.lock, got %q", ProjectKindTypeScript, kind)
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeTypeScript {
+		t.Errorf("expected %q for package.json + bun.lock, got %q", ProjectTypeTypeScript, kind)
 	}
 }
 
-func TestDetectProjectKindBunLockb(t *testing.T) {
+func TestDetectProjectTypeBunLockb(t *testing.T) {
 	dir := t.TempDir()
 	os.WriteFile(filepath.Join(dir, "package.json"), []byte(`{"name":"test"}`), 0644)
 	os.WriteFile(filepath.Join(dir, "bun.lockb"), []byte(""), 0644)
 
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindTypeScript {
-		t.Errorf("expected %q for package.json + bun.lockb, got %q", ProjectKindTypeScript, kind)
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeTypeScript {
+		t.Errorf("expected %q for package.json + bun.lockb, got %q", ProjectTypeTypeScript, kind)
 	}
 }
 
@@ -325,8 +306,8 @@ func TestSaveDefaultTypeScriptConfig(t *testing.T) {
 
 func TestMainRejectsNoProject(t *testing.T) {
 	dir := t.TempDir()
-	kind := DetectProjectKind(dir)
-	if kind != ProjectKindUnknown {
+	kind := DetectProjectType(dir)
+	if kind != ProjectTypeGeneric {
 		t.Errorf("empty dir should detect as unknown, got %q", kind)
 	}
 }

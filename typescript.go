@@ -50,7 +50,7 @@ func DetectTypeScriptWorkspace(root string) (*Workspace, error) {
 		}
 		for _, m := range matches {
 			if info, err := os.Stat(m); err == nil && info.IsDir() {
-				if fileExistsAt(filepath.Join(m, "package.json")) {
+				if fileExists(filepath.Join(m, "package.json")) {
 					rel, _ := filepath.Rel(root, m)
 					ws.Members = append(ws.Members, rel)
 				}
@@ -181,4 +181,3 @@ exclude = []
 `
 	return os.WriteFile(configPath, []byte(content), 0644)
 }
-

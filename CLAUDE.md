@@ -27,9 +27,9 @@ Single-package Go binary (`package main`), no internal packages:
 | File | Responsibility |
 |------|---------------|
 | `main.go` | CLI entry, stage execution, hashing, caching |
-| `config.go` | `.local-ci.toml` parsing, default Rust stages, `Config` struct |
+| `config.go` | `.local-ci.toml` parsing, default stages, `Config` struct |
 | `workspace.go` | `Cargo.toml` workspace detection, glob expansion |
-| `project.go` | `ProjectKind` enum, `DetectProjectKind` (Rust vs TypeScript vs Unknown) |
+| `project_type.go` | `ProjectType` enum, `DetectProjectType` (Rust, Go, TS, etc.) |
 | `typescript.go` | TS/Bun workspace detection, default TS stages, TS config templates |
 | `toolcheck.go` | Tool detection for cargo and bun ecosystems (deny, audit, machete, taplo) |
 | `hooks.go` | Git pre-commit hook creation/removal |
@@ -37,7 +37,7 @@ Single-package Go binary (`package main`), no internal packages:
 
 ## Key Types
 
-- `ProjectKind` — `rust`, `typescript`, or `unknown`
+- `ProjectType` — `rust`, `go`, `typescript`, `python`, `node`, `java`, or `generic`
 - `Stage` — CI stage with `Cmd`, `FixCmd`, `Timeout`, `Enabled`
 - `Config` — parsed from `.local-ci.toml` (cache, stages, workspace, deps)
 - `Workspace` — workspace structure (members, excludes, single detection) — shared by Rust and TS
@@ -70,5 +70,5 @@ Nix cache: `https://nix-cache.stevedores.org` (attic)
 # Add a new tool check: append to cargoTools/bunTools/systemTools in toolcheck.go
 # Modify hashing: edit computeSourceHash() in main.go
 # Modify workspace detection: edit DetectWorkspace() or DetectTypeScriptWorkspace()
-# Add new project type: extend ProjectKind in project.go
+# Add new project type: extend ProjectType in project_type.go
 ```

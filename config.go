@@ -11,25 +11,25 @@ import (
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache       CacheConfig       `toml:"cache"`
-	Stages      map[string]Stage  `toml:"stages"`
+	Cache        CacheConfig      `toml:"cache"`
+	Stages       map[string]Stage `toml:"stages"`
 	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace   WorkspaceConfig   `toml:"workspace"`
+	Workspace    WorkspaceConfig  `toml:"workspace"`
 }
 
 // CacheConfig defines caching behavior
 type CacheConfig struct {
-	SkipDirs       []string `toml:"skip_dirs"`
+	SkipDirs        []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
 }
 
 // StageConfig defines a CI stage
 type StageConfig struct {
-	Command              []string      `toml:"command"`
-	FixCommand           []string      `toml:"fix_command"`
-	Timeout              int           `toml:"timeout"` // seconds
-	Enabled              bool          `toml:"enabled"`
-	RespectWorkspaceExcludes bool      `toml:"respect_workspace_excludes"`
+	Command                  []string `toml:"command"`
+	FixCommand               []string `toml:"fix_command"`
+	Timeout                  int      `toml:"timeout"` // seconds
+	Enabled                  bool     `toml:"enabled"`
+	RespectWorkspaceExcludes bool     `toml:"respect_workspace_excludes"`
 }
 
 // DepsConfig defines system dependencies
@@ -56,7 +56,7 @@ func LoadConfig(root string) (*Config, error) {
 
 	cfg := &Config{
 		Cache: CacheConfig{
-			SkipDirs: skipDirs,
+			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
 		Stages: defaultStages,
@@ -121,85 +121,15 @@ func SaveDefaultConfig(root string, wsConfig *Workspace) error {
 	return nil
 }
 
-// defaultStages returns the default stage definitions
-func defaultStages() map[string]Stage {
-	return map[string]Stage{
-		"fmt": {
-			Name:    "fmt",
-			Cmd:     []string{"cargo", "fmt", "--all", "--", "--check"},
-			FixCmd:  []string{"cargo", "fmt", "--all"},
-			Check:   true,
-			Timeout: 120,
-			Enabled: true,
-		},
-		"clippy": {
-			Name:    "clippy",
-			Cmd:     []string{"cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: true,
-		},
-		"test": {
-			Name:    "test",
-			Cmd:     []string{"cargo", "test", "--workspace"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 1200,
-			Enabled: true,
-		},
-		"check": {
-			Name:    "check",
-			Cmd:     []string{"cargo", "check", "--workspace"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false, // Disabled by default, redundant with clippy
-		},
-		"deny": {
-			Name:    "deny",
-			Cmd:     []string{"cargo", "deny", "check"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false, // Requires cargo-deny to be installed
-		},
-		"audit": {
-			Name:    "audit",
-			Cmd:     []string{"cargo", "audit"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false, // Requires cargo-audit to be installed
-		},
-		"machete": {
-			Name:    "machete",
-			Cmd:     []string{"cargo", "machete"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false, // Requires cargo-machete to be installed
-		},
-		"taplo": {
-			Name:    "taplo",
-			Cmd:     []string{"taplo", "format", "--check", "."},
-			FixCmd:  []string{"taplo", "format", "."},
-			Check:   true,
-			Timeout: 300,
-			Enabled: false, // Requires taplo to be installed
-		},
-	}
-}
-
 // ToStageConfigs converts the config stages map to Stage structs
 func (c *Config) ToStageConfigs() map[string]StageConfig {
 	result := make(map[string]StageConfig)
 	for name, stage := range c.Stages {
 		result[name] = StageConfig{
-			Command:              stage.Cmd,
-			FixCommand:           stage.FixCmd,
-			Timeout:              stage.Timeout,
-			Enabled:              stage.Enabled,
+			Command:                  stage.Cmd,
+			FixCommand:               stage.FixCmd,
+			Timeout:                  stage.Timeout,
+			Enabled:                  stage.Enabled,
 			RespectWorkspaceExcludes: false,
 		}
 	}

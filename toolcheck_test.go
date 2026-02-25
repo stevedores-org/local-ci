@@ -137,12 +137,12 @@ func TestBunToolsHaveRequiredFields(t *testing.T) {
 }
 
 func TestGetMissingToolsForKind(t *testing.T) {
-	rustHints := GetMissingToolsWithHints(ProjectKindRust)
+	rustHints := GetMissingToolsWithHints(ProjectTypeRust)
 	if rustHints == nil {
 		t.Error("should return non-nil map for Rust")
 	}
 
-	tsHints := GetMissingToolsWithHints(ProjectKindTypeScript)
+	tsHints := GetMissingToolsWithHints(ProjectTypeTypeScript)
 	if tsHints == nil {
 		t.Error("should return non-nil map for TypeScript")
 	}
