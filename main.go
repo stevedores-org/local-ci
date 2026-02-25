@@ -1,22 +1,31 @@
-// local-ci — Local CI runner for Rust and TypeScript workspaces.
+// local-ci — Universal local CI runner for any project type.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust and TypeScript/Bun projects. Supports file-hash caching,
-// configuration files, and colored output.
+// for Rust, Python, Node.js, Go, Java, and other projects.
+// Auto-detects project type and applies language-specific defaults.
+//
+// Supports file-hash caching, configuration files, and colored output.
 //
 // Usage:
 //
-//	local-ci                Run default stages
-//	local-ci fmt clippy     Run specific stages (Rust)
-//	local-ci typecheck lint Run specific stages (TypeScript)
+//	local-ci                Run default stages for detected project type
+//	local-ci fmt clippy     Run specific stages
 //	local-ci init           Initialize .local-ci.toml in current project
 //	local-ci --no-cache     Disable caching, force all stages
-//	local-ci --fix          Auto-fix formatting
+//	local-ci --fix          Auto-fix issues
 //	local-ci --verbose      Show detailed output
 //	local-ci --list         List available stages
 //	local-ci --version      Print version
 //	local-ci --remote HOST  Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)
 //	local-ci --session NAME Use specific tmux session name (default: onion)
+//
+// Supported project types:
+//   - Rust (Cargo.toml)
+//   - Python (pyproject.toml, setup.py, requirements.txt)
+//   - Node.js (package.json)
+//   - Go (go.mod)
+//   - Java (pom.xml, build.gradle)
+//   - Generic (custom commands via .local-ci.toml)
 package main
 
 import (
@@ -35,7 +44,7 @@ import (
 	"time"
 )
 
-var version = "0.2.0"
+var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
 
 type Stage struct {
 	Name    string   `toml:"-"`
@@ -89,20 +98,16 @@ func main() {
 	)
 
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "local-ci v%s — Local CI for Rust & TypeScript workspaces\n\n", version)
+		fmt.Fprintf(os.Stderr, "local-ci v%s — Universal local CI for any project\n\n", version)
+		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, Node.js, Go, Java, and custom projects\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
-		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml in current project\n\n")
-		fmt.Fprintf(os.Stderr, "Rust stages:\n")
-		fmt.Fprintf(os.Stderr, "  fmt       Format check (cargo fmt --check)\n")
-		fmt.Fprintf(os.Stderr, "  clippy    Linter (cargo clippy -D warnings)\n")
-		fmt.Fprintf(os.Stderr, "  test      Tests (cargo test --workspace)\n")
-		fmt.Fprintf(os.Stderr, "  check     Compile check (cargo check)\n\n")
-		fmt.Fprintf(os.Stderr, "TypeScript/Bun stages:\n")
-		fmt.Fprintf(os.Stderr, "  typecheck Type-check (bun run tsc --noEmit)\n")
-		fmt.Fprintf(os.Stderr, "  lint      Lint (bun run eslint .)\n")
-		fmt.Fprintf(os.Stderr, "  test      Tests (bun test)\n")
-		fmt.Fprintf(os.Stderr, "  format    Format check (bun run prettier --check .)\n\n")
+		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")
+		fmt.Fprintf(os.Stderr, "Examples:\n")
+		fmt.Fprintf(os.Stderr, "  local-ci              Run enabled stages for your project\n")
+		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --fix        Auto-fix format/lint issues\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --list       List all available stages\n\n")
 		fmt.Fprintf(os.Stderr, "Remote execution:\n")
 		fmt.Fprintf(os.Stderr, "  --remote HOST  Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)\n")
 		fmt.Fprintf(os.Stderr, "  --session NAME Use specific tmux session name (default: onion)\n\n")
@@ -121,33 +126,21 @@ func main() {
 		fatalf("Cannot get working directory: %v", err)
 	}
 
-	// Detect project kind
-	kind := DetectProjectKind(cwd)
-	if kind == ProjectKindUnknown {
-		fatalf("No project detected. Expected Cargo.toml (Rust) or package.json + tsconfig.json/bunfig.toml (TypeScript) in %s", cwd)
-	}
-
 	// Handle init subcommand
 	args := flag.Args()
 	if len(args) > 0 && args[0] == "init" {
-		cmdInit(cwd, kind)
+		cmdInit(cwd)
 		return
 	}
 
-	// Load configuration (kind-aware)
-	config, err := LoadConfig(cwd, kind)
+	// Load configuration
+	config, err := LoadConfig(cwd)
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
 	}
 
 	// Detect workspace
-	var ws *Workspace
-	switch kind {
-	case ProjectKindTypeScript:
-		ws, err = DetectTypeScriptWorkspace(cwd)
-	default:
-		ws, err = DetectWorkspace(cwd)
-	}
+	ws, err := DetectWorkspace(cwd)
 	if err != nil && *flagVerbose {
 		warnf("Workspace detection failed: %v", err)
 	}
@@ -415,12 +408,6 @@ func main() {
 	}
 	printf("  Total time: %dms\n", totalDuration.Milliseconds())
 
-	// Show missing tools (optional)
-	missingTools := GetMissingToolsWithHints(kind)
-	if len(missingTools) > 0 {
-		printf("%s", FormatMissingToolsMessage(missingTools))
-	}
-
 	// Exit with error if any stage failed
 	if failCount > 0 {
 		os.Exit(1)
@@ -581,10 +568,18 @@ func saveCache(cache map[string]string, root string) error {
 	return os.WriteFile(cachePath, []byte(strings.Join(lines, "\n")), 0644)
 }
 
-// printWorkspace prints workspace detection results.
-func printWorkspace(ws *Workspace, unitName string) {
+// cmdInit initializes a new .local-ci.toml configuration
+func cmdInit(root string) {
+	// Detect workspace
+	ws, err := DetectWorkspace(root)
+	if err != nil {
+		fatalf("Failed to detect workspace: %v", err)
+	}
+
+	printf("📦 Initializing local-ci for %s\n", root)
+
 	if ws.IsSingle {
-		printf("  Single %s: %s\n", unitName, ws.Members[0])
+		printf("  Single crate: %s\n", ws.Members[0])
 	} else {
 		printf("  Workspace with %d members\n", len(ws.Members))
 		for _, member := range ws.Members {
@@ -595,34 +590,11 @@ func printWorkspace(ws *Workspace, unitName string) {
 			}
 		}
 	}
-}
 
-// cmdInit initializes a new .local-ci.toml configuration
-func cmdInit(root string, kind ProjectKind) {
-	printf("📦 Initializing local-ci for %s (%s project)\n", root, kind)
-
-	switch kind {
-	case ProjectKindTypeScript:
-		ws, err := DetectTypeScriptWorkspace(root)
-		if err != nil {
-			fatalf("Failed to detect workspace: %v", err)
-		}
-		printWorkspace(ws, "package")
-		if err := SaveDefaultTypeScriptConfig(root); err != nil {
-			fatalf("Failed to save config: %v", err)
-		}
-
-	default:
-		ws, err := DetectWorkspace(root)
-		if err != nil {
-			fatalf("Failed to detect workspace: %v", err)
-		}
-		printWorkspace(ws, "crate")
-		if err := SaveDefaultConfig(root, ws); err != nil {
-			fatalf("Failed to save config: %v", err)
-		}
+	// Create .local-ci.toml
+	if err := SaveDefaultConfig(root, ws); err != nil {
+		fatalf("Failed to save config: %v", err)
 	}
-
 	successf("✅ Created .local-ci.toml\n")
 
 	// Update .gitignore
@@ -643,15 +615,10 @@ func cmdInit(root string, kind ProjectKind) {
 	printf("\n💡 Next steps:\n")
 	printf("  1. Run 'local-ci' to test the setup\n")
 	printf("  2. Customize .local-ci.toml as needed\n")
-	switch kind {
-	case ProjectKindTypeScript:
-		printf("  3. Ensure your package.json has 'lint' and 'format' scripts\n")
-	default:
-		printf("  3. Consider installing cargo tools:\n")
-		printf("     - cargo install cargo-deny\n")
-		printf("     - cargo install cargo-audit\n")
-		printf("     - cargo install cargo-machete\n")
-	}
+	printf("  3. Consider installing cargo tools:\n")
+	printf("     - cargo install cargo-deny\n")
+	printf("     - cargo install cargo-audit\n")
+	printf("     - cargo install cargo-machete\n")
 }
 
 // updateGitignore adds an entry to .gitignore if not already present
