@@ -12,11 +12,11 @@ import (
 
 // RemoteExecutor handles execution of stages on a remote machine via SSH+tmux
 type RemoteExecutor struct {
-	Host       string        // SSH host (e.g., "aivcs@100.90.209.9")
-	Session    string        // tmux session name (e.g., "onion")
-	WorkDir    string        // Remote working directory
-	Timeout    time.Duration // SSH operation timeout
-	Verbose    bool          // Show detailed output
+	Host    string        // SSH host (e.g., "aivcs@100.90.209.9")
+	Session string        // tmux session name (e.g., "onion")
+	WorkDir string        // Remote working directory
+	Timeout time.Duration // SSH operation timeout
+	Verbose bool          // Show detailed output
 }
 
 // NewRemoteExecutor creates a new remote executor

@@ -1,6 +1,6 @@
 # local-ci
 
-A lightweight, cacheable local CI runner for Rust workspaces and TypeScript/Bun projects. Mirrors GitHub Actions with file-hash caching, supports optional cargo ecosystem tools, and provides first-class TypeScript/Bun pipeline stages (typecheck, lint, test, format).
+A lightweight, cacheable local CI runner for Rust and TypeScript/Bun workspaces. Auto-detects project type, mirrors GitHub Actions with file-hash caching, supports optional cargo ecosystem tools, and provides first-class TypeScript/Bun pipeline stages.
 
 ## Features
 
@@ -34,7 +34,7 @@ go install github.com/stevedores-org/local-ci@latest
 
 ## Quick Start
 
-Initialize local-ci in your Rust or TypeScript/Bun project:
+Initialize local-ci in your project (auto-detects Rust or TypeScript/Bun):
 
 ```bash
 cd your-project
@@ -42,9 +42,10 @@ local-ci init
 ```
 
 This will:
-1. Create `.local-ci.toml` with sensible defaults
-2. Add `.local-ci-cache` to `.gitignore`
-3. Generate optional pre-commit hook
+1. Detect project type (Cargo.toml → Rust, package.json + tsconfig/bunfig/bun.lock → TypeScript)
+2. Create `.local-ci.toml` with language-appropriate defaults
+3. Add `.local-ci-cache` to `.gitignore`
+4. Generate optional pre-commit hook
 
 Then run:
 
@@ -111,6 +112,8 @@ local-ci --version
 
 ## Default Stages
 
+### Rust (auto-detected via Cargo.toml)
+
 | Stage | Command | Check | Auto-fix |
 |-------|---------|-------|----------|
 | **fmt** | `cargo fmt --check` | ✓ | ✓ |
@@ -118,16 +121,16 @@ local-ci --version
 | **test** | `cargo test --workspace` | ✗ | ✗ |
 | **check** | `cargo check --workspace` | ✗ | ✗ |
 
-### TypeScript / Bun Stages
+### TypeScript/Bun (auto-detected via package.json + tsconfig/bunfig/bun.lock)
 
-When `local-ci init` detects a `package.json` with Bun-compatible scripts, it generates TypeScript-oriented stages:
+| Stage | Command | Auto-fix | Default |
+|-------|---------|----------|---------|
+| **typecheck** | `bun x tsc --noEmit` | ✗ | enabled |
+| **lint** | `bun run lint` | ✓ (`--fix`) | enabled |
+| **test** | `bun test` | ✗ | enabled |
+| **format** | `bun run format --check` | ✓ | disabled |
 
-| Stage | Command | Check | Auto-fix |
-|-------|---------|-------|---------|
-| **typecheck** | `bun run typecheck` | ✓ | ✗ |
-| **lint** | `bun run lint` | ✓ | ✓ |
-| **test** | `bun run test` | ✗ | ✗ |
-| **format** | `bun run format --check` | ✓ | ✓ |
+Lint and format stages delegate to your `package.json` scripts, so you can use eslint, biome, prettier, or any other tool.
 
 ## Optional Cargo Tool Stages
 
@@ -237,13 +240,49 @@ optional = []
 exclude = []
 ```
 
+### TypeScript/Bun .local-ci.toml
+
+```toml
+[cache]
+skip_dirs = [".git", "node_modules", "dist", ".next", "coverage", ".claude"]
+include_patterns = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.json"]
+
+[stages.typecheck]
+command = ["bun", "x", "tsc", "--noEmit"]
+timeout = 120
+enabled = true
+
+[stages.lint]
+command = ["bun", "run", "lint"]
+fix_command = ["bun", "run", "lint", "--", "--fix"]
+timeout = 300
+enabled = true
+
+[stages.test]
+command = ["bun", "test"]
+timeout = 600
+enabled = true
+
+[stages.format]
+command = ["bun", "run", "format", "--check"]
+fix_command = ["bun", "run", "format"]
+timeout = 120
+enabled = false
+```
+
 ### Default Behavior
 
-If `.local-ci.toml` doesn't exist, local-ci uses sensible defaults:
+If `.local-ci.toml` doesn't exist, local-ci auto-detects the project type and uses sensible defaults:
+
+**Rust projects:**
 - Runs: fmt, clippy, test
 - Skips: .git, target, .github, scripts, .claude
 - Hashes: *.rs, *.toml files
-- Timeout: 30s default (per-stage configurable)
+
+**TypeScript/Bun projects:**
+- Runs: typecheck, lint, test
+- Skips: .git, node_modules, dist, .next, coverage, .claude
+- Hashes: *.ts, *.tsx, *.js, *.jsx, *.json files
 
 Unknown stage names now fail fast (instead of being silently ignored).
 
@@ -307,7 +346,9 @@ Or system-wide in `/etc/nix/nix.conf` (requires root)
 
 ## Workspace Support
 
-local-ci automatically detects workspace structure from `Cargo.toml`:
+local-ci automatically detects workspace structure from `Cargo.toml` (Rust) or `package.json` workspaces (TypeScript/Bun).
+
+### Rust
 
 ```toml
 [workspace]
@@ -319,6 +360,18 @@ exclude = ["crates/legacy-*"]
 - Workspace members
 - Excluded crates (skipped in hash computation)
 - Single-crate projects
+
+### TypeScript/Bun
+
+```json
+{
+  "workspaces": ["packages/*", "apps/*"]
+}
+```
+
+**Auto-detected:**
+- Workspace members from package.json `workspaces` globs
+- Single-package projects (no workspaces field)
 
 Configure in `.local-ci.toml`:
 ```toml
