@@ -49,11 +49,11 @@ var version = "0.4.0" // Parallel stage execution with dependency graph
 type Stage struct {
 	Name      string   `toml:"-"`
 	Cmd       []string `toml:"command"`
-	FixCmd    []string `toml:"fix_command"`  // command to run with --fix flag
-	Check     bool     `toml:"check"`        // true if this is a --check command
-	Timeout   int      `toml:"timeout"`      // in seconds
+	FixCmd    []string `toml:"fix_command"` // command to run with --fix flag
+	Check     bool     `toml:"check"`       // true if this is a --check command
+	Timeout   int      `toml:"timeout"`     // in seconds
 	Enabled   bool     `toml:"enabled"`
-	DependsOn string   `toml:"depends_on"`   // stage that must complete before this one
+	DependsOn string   `toml:"depends_on"` // stage that must complete before this one
 }
 
 type Result struct {
@@ -94,11 +94,11 @@ func main() {
 		flagList     = flag.Bool("list", false, "List available stages")
 		flagVersion  = flag.Bool("version", false, "Print version")
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
-		flagRemote    = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
-		flagSession   = flag.String("session", "onion", "tmux session name for remote execution")
-		flagParallel  = flag.Bool("parallel", false, "Run independent stages concurrently")
-		flagJobs      = flag.Int("j", 0, "Max concurrent stages (0 = auto, implies --parallel)")
-		flagDryRun    = flag.Bool("dry-run", false, "Show what would run without executing")
+		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
+		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
+		flagParallel = flag.Bool("parallel", false, "Run independent stages concurrently")
+		flagJobs     = flag.Int("j", 0, "Max concurrent stages (0 = auto, implies --parallel)")
+		flagDryRun   = flag.Bool("dry-run", false, "Show what would run without executing")
 	)
 
 	flag.Usage = func() {
@@ -312,97 +312,97 @@ func main() {
 			}
 		}
 	} else {
-	for _, stage := range stages {
-		stageStart := time.Now()
-		cmdStr := strings.Join(stage.Cmd, " ")
-		stageCacheKey := sourceHash + "|" + cmdStr
+		for _, stage := range stages {
+			stageStart := time.Now()
+			cmdStr := strings.Join(stage.Cmd, " ")
+			stageCacheKey := sourceHash + "|" + cmdStr
 
-		// Check cache
-		if !*flagNoCache && cache[stage.Name] == stageCacheKey {
-			if *flagVerbose && !*flagJSON {
-				printf("✓ %s (cached)\n", stage.Name)
-			}
-			results = append(results, Result{
-				Name:     stage.Name,
-				Command:  cmdStr,
-				Status:   "pass",
-				CacheHit: true,
-				Duration: 0,
-			})
-			continue
-		}
-
-		// Print stage header
-		if !*flagJSON {
-			printf("::group::%s\n", stage.Name)
-			if *flagVerbose {
-				printf("$ %s\n", cmdStr)
-			}
-		}
-
-		var result Result
-
-		// Execute stage (local or remote)
-		if remoteExec != nil {
-			// Remote execution
-			result = remoteExec.ExecuteStage(stage)
-		} else {
-			// Local execution
-			timeout := time.Duration(stage.Timeout) * time.Second
-			if timeout == 0 {
-				timeout = 30 * time.Second
-			}
-
-			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
-			var out bytes.Buffer
-			cmd.Stdout = &out
-			cmd.Stderr = &out
-			cmd.Dir = cwd
-
-			err := cmd.Run()
-			cancel()
-			duration := time.Since(stageStart)
-
-			result = Result{
-				Name:     stage.Name,
-				Command:  cmdStr,
-				Status:   "pass",
-				Duration: duration,
-				Output:   out.String(),
-			}
-			if err != nil {
-				result.Status = "fail"
-				result.Error = err
-			}
-		}
-
-		// Post-process and output result
-		if result.Status == "fail" {
-			if !*flagJSON {
-				if result.Output != "" {
-					printf("%s\n", result.Output)
+			// Check cache
+			if !*flagNoCache && cache[stage.Name] == stageCacheKey {
+				if *flagVerbose && !*flagJSON {
+					printf("✓ %s (cached)\n", stage.Name)
 				}
-				printf("::endgroup::\n")
-				printf("✗ %s (failed)\n", result.Name)
+				results = append(results, Result{
+					Name:     stage.Name,
+					Command:  cmdStr,
+					Status:   "pass",
+					CacheHit: true,
+					Duration: 0,
+				})
+				continue
 			}
-			results = append(results, result)
-			if *flagFailFast {
-				break
-			}
-		} else {
+
+			// Print stage header
 			if !*flagJSON {
-				if *flagVerbose && result.Output != "" {
-					printf("%s\n", result.Output)
+				printf("::group::%s\n", stage.Name)
+				if *flagVerbose {
+					printf("$ %s\n", cmdStr)
 				}
-				printf("::endgroup::\n")
-				printf("✓ %s (%dms)\n", result.Name, result.Duration.Milliseconds())
 			}
-			results = append(results, result)
-			// Update cache
-			cache[stage.Name] = stageCacheKey
+
+			var result Result
+
+			// Execute stage (local or remote)
+			if remoteExec != nil {
+				// Remote execution
+				result = remoteExec.ExecuteStage(stage)
+			} else {
+				// Local execution
+				timeout := time.Duration(stage.Timeout) * time.Second
+				if timeout == 0 {
+					timeout = 30 * time.Second
+				}
+
+				ctx, cancel := context.WithTimeout(context.Background(), timeout)
+				cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
+				var out bytes.Buffer
+				cmd.Stdout = &out
+				cmd.Stderr = &out
+				cmd.Dir = cwd
+
+				err := cmd.Run()
+				cancel()
+				duration := time.Since(stageStart)
+
+				result = Result{
+					Name:     stage.Name,
+					Command:  cmdStr,
+					Status:   "pass",
+					Duration: duration,
+					Output:   out.String(),
+				}
+				if err != nil {
+					result.Status = "fail"
+					result.Error = err
+				}
+			}
+
+			// Post-process and output result
+			if result.Status == "fail" {
+				if !*flagJSON {
+					if result.Output != "" {
+						printf("%s\n", result.Output)
+					}
+					printf("::endgroup::\n")
+					printf("✗ %s (failed)\n", result.Name)
+				}
+				results = append(results, result)
+				if *flagFailFast {
+					break
+				}
+			} else {
+				if !*flagJSON {
+					if *flagVerbose && result.Output != "" {
+						printf("%s\n", result.Output)
+					}
+					printf("::endgroup::\n")
+					printf("✓ %s (%dms)\n", result.Name, result.Duration.Milliseconds())
+				}
+				results = append(results, result)
+				// Update cache
+				cache[stage.Name] = stageCacheKey
+			}
 		}
-	}
 	}
 
 	// Save cache

@@ -17,13 +17,13 @@ type DryRunStage struct {
 
 // DryRunReport is the full dry-run output.
 type DryRunReport struct {
-	DryRun     bool           `json:"dry_run"`
-	Workspace  string         `json:"workspace"`
-	SourceHash string         `json:"source_hash"`
-	Stages     []DryRunStage  `json:"stages"`
-	ToRun      int            `json:"to_run"`
-	Cached     int            `json:"cached"`
-	Disabled   int            `json:"disabled"`
+	DryRun     bool          `json:"dry_run"`
+	Workspace  string        `json:"workspace"`
+	SourceHash string        `json:"source_hash"`
+	Stages     []DryRunStage `json:"stages"`
+	ToRun      int           `json:"to_run"`
+	Cached     int           `json:"cached"`
+	Disabled   int           `json:"disabled"`
 }
 
 // BuildDryRunReport computes a dry-run report for the given stages.
