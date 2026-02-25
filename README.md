@@ -1,6 +1,6 @@
 # local-ci
 
-A lightweight, cacheable local CI runner for Rust and TypeScript/Bun workspaces. Auto-detects project type, mirrors GitHub Actions with file-hash caching, and supports ecosystem-specific tooling.
+A lightweight, cacheable local CI runner for Rust and TypeScript/Bun workspaces. Auto-detects project type, mirrors GitHub Actions with file-hash caching, supports optional cargo ecosystem tools, and provides first-class TypeScript/Bun pipeline stages.
 
 ## Features
 
@@ -8,8 +8,8 @@ A lightweight, cacheable local CI runner for Rust and TypeScript/Bun workspaces.
 - 🎨 **Colored Output**: Visual feedback with GitHub Actions-style formatting
 - 📦 **Minimal**: Single binary with zero dependencies (except TOML parsing)
 - 🔧 **Flexible**: Run specific stages or all stages
-- 🛠️ **Tool Support**: Integrates with cargo ecosystem (deny, audit, machete, taplo)
-- 📂 **Workspace Aware**: Auto-detects workspace structure and excludes
+- 🛠️ **Tool Support**: Integrates with cargo ecosystem (deny, audit, machete, taplo) and Bun/TypeScript tooling
+- 📂 **Workspace Aware**: Auto-detects Rust workspace structure and Bun/TypeScript projects
 - ⚡ **Config-Driven**: `.local-ci.toml` for per-project customization
 - 🪝 **Git Hooks**: Optional pre-commit hook generation
 - 🔗 **Nix Cache Integration**: Optional attic cache support for faster builds (nix-cache.stevedores.org)
