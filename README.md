@@ -1,6 +1,6 @@
 # local-ci
 
-A lightweight, cacheable local CI runner for Rust workspaces. Mirrors GitHub Actions with file-hash caching and supports optional cargo ecosystem tools.
+A lightweight, cacheable local CI runner for Rust workspaces and TypeScript/Bun projects. Mirrors GitHub Actions with file-hash caching, supports optional cargo ecosystem tools, and provides first-class TypeScript/Bun pipeline stages (typecheck, lint, test, format).
 
 ## Features
 
@@ -8,8 +8,8 @@ A lightweight, cacheable local CI runner for Rust workspaces. Mirrors GitHub Act
 - 🎨 **Colored Output**: Visual feedback with GitHub Actions-style formatting
 - 📦 **Minimal**: Single binary with zero dependencies (except TOML parsing)
 - 🔧 **Flexible**: Run specific stages or all stages
-- 🛠️ **Tool Support**: Integrates with cargo ecosystem (deny, audit, machete, taplo)
-- 📂 **Workspace Aware**: Auto-detects workspace structure and excludes
+- 🛠️ **Tool Support**: Integrates with cargo ecosystem (deny, audit, machete, taplo) and Bun/TypeScript tooling
+- 📂 **Workspace Aware**: Auto-detects Rust workspace structure and Bun/TypeScript projects
 - ⚡ **Config-Driven**: `.local-ci.toml` for per-project customization
 - 🪝 **Git Hooks**: Optional pre-commit hook generation
 - 🔗 **Nix Cache Integration**: Optional attic cache support for faster builds (nix-cache.stevedores.org)
@@ -34,10 +34,10 @@ go install github.com/stevedores-org/local-ci@latest
 
 ## Quick Start
 
-Initialize local-ci in your Rust project:
+Initialize local-ci in your Rust or TypeScript/Bun project:
 
 ```bash
-cd your-rust-project
+cd your-project
 local-ci init
 ```
 
@@ -117,6 +117,17 @@ local-ci --version
 | **clippy** | `cargo clippy -D warnings` | ✗ | ✗ |
 | **test** | `cargo test --workspace` | ✗ | ✗ |
 | **check** | `cargo check --workspace` | ✗ | ✗ |
+
+### TypeScript / Bun Stages
+
+When `local-ci init` detects a `package.json` with Bun-compatible scripts, it generates TypeScript-oriented stages:
+
+| Stage | Command | Check | Auto-fix |
+|-------|---------|-------|---------|
+| **typecheck** | `bun run typecheck` | ✓ | ✗ |
+| **lint** | `bun run lint` | ✓ | ✓ |
+| **test** | `bun run test` | ✗ | ✗ |
+| **format** | `bun run format --check` | ✓ | ✓ |
 
 ## Optional Cargo Tool Stages
 
