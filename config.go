@@ -4,33 +4,14 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
 )
 
-// stagePriority defines the canonical execution order.
-// Fast checks run first for best --fail-fast behavior.
-// Stages not in this list sort alphabetically after known stages.
-var stagePriority = map[string]int{
-	"fmt":     0,
-	"clippy":  1,
-	"check":   2,
-	"test":    3,
-	"deny":    4,
-	"audit":   5,
-	"machete": 6,
-	"taplo":   7,
-	// TypeScript stages
-	"lint":      0,
-	"typecheck": 1,
-	"build":     5,
-}
-
-// Profile defines a named set of overrides for stage selection and flags.
+// Profile represents a named collection of settings
 type Profile struct {
-	Stages   []string `toml:"stages"`
+	Stages   []string `toml:"stages"` // stage names to enable (overrides enabled)
 	FailFast bool     `toml:"fail_fast"`
 	NoCache  bool     `toml:"no_cache"`
 	JSON     bool     `toml:"json"`
@@ -40,15 +21,24 @@ type Profile struct {
 type Config struct {
 	Cache        CacheConfig        `toml:"cache"`
 	Stages       map[string]Stage   `toml:"stages"`
-	Profiles     map[string]Profile `toml:"profiles"`
 	Dependencies DepsConfig         `toml:"dependencies"`
 	Workspace    WorkspaceConfig    `toml:"workspace"`
+	Profiles     map[string]Profile `toml:"profiles"`
 }
 
 // CacheConfig defines caching behavior
 type CacheConfig struct {
 	SkipDirs        []string `toml:"skip_dirs"`
 	IncludePatterns []string `toml:"include_patterns"`
+}
+
+// StageConfig defines a CI stage
+type StageConfig struct {
+	Command                  []string `toml:"command"`
+	FixCommand               []string `toml:"fix_command"`
+	Timeout                  int      `toml:"timeout"` // seconds
+	Enabled                  bool     `toml:"enabled"`
+	RespectWorkspaceExcludes bool     `toml:"respect_workspace_excludes"`
 }
 
 // DepsConfig defines system dependencies
@@ -62,9 +52,8 @@ type WorkspaceConfig struct {
 	Exclude []string `toml:"exclude"`
 }
 
-// LoadConfig loads configuration from .local-ci.toml or returns defaults.
-// Auto-detects project type for language-specific defaults when no config file exists.
-func LoadConfig(root string) (*Config, error) {
+// LoadConfig loads configuration from .local-ci.toml (and .local-ci-remote.toml if remote=true)
+func LoadConfig(root string, remote bool) (*Config, error) {
 	configPath := filepath.Join(root, ".local-ci.toml")
 
 	// Detect project type for smart defaults
@@ -78,8 +67,7 @@ func LoadConfig(root string) (*Config, error) {
 			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
-		Stages:   defaultStages,
-		Profiles: map[string]Profile{},
+		Stages: defaultStages,
 		Dependencies: DepsConfig{
 			Required: []string{},
 			Optional: []string{},
@@ -87,26 +75,66 @@ func LoadConfig(root string) (*Config, error) {
 		Workspace: WorkspaceConfig{
 			Exclude: []string{},
 		},
+		Profiles: make(map[string]Profile),
 	}
 
 	// Try to load from file
 	data, err := os.ReadFile(configPath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return cfg, nil // Return defaults if file doesn't exist
+			// Fall through to remote config loading or return defaults
+		} else {
+			return nil, fmt.Errorf("failed to read config file: %w", err)
 		}
-		return nil, fmt.Errorf("failed to read config file: %w", err)
+	} else {
+		// Parse TOML
+		if err := toml.Unmarshal(data, cfg); err != nil {
+			return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
+		}
 	}
 
-	// Parse TOML
-	if err := toml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("failed to parse .local-ci.toml: %w", err)
-	}
+	// If --remote flag is set, load and merge .local-ci-remote.toml
+	if remote {
+		remoteConfigPath := filepath.Join(root, ".local-ci-remote.toml")
+		remoteData, err := os.ReadFile(remoteConfigPath)
+		if err != nil {
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("failed to read remote config file: %w", err)
+			}
+			// If remote config doesn't exist, that's okay - just continue with local config
+		} else {
+			// Parse and merge remote TOML
+			remoteCfg := &Config{}
+			if err := toml.Unmarshal(remoteData, remoteCfg); err != nil {
+				return nil, fmt.Errorf("failed to parse .local-ci-remote.toml: %w", err)
+			}
 
-	// Set stage names from map keys (Name is toml:"-")
-	for name, stage := range cfg.Stages {
-		stage.Name = name
-		cfg.Stages[name] = stage
+			// Merge remote stages (override local stages if specified in remote)
+			for name, stage := range remoteCfg.Stages {
+				cfg.Stages[name] = stage
+			}
+
+			// Merge remote cache config if specified
+			if len(remoteCfg.Cache.SkipDirs) > 0 {
+				cfg.Cache.SkipDirs = remoteCfg.Cache.SkipDirs
+			}
+			if len(remoteCfg.Cache.IncludePatterns) > 0 {
+				cfg.Cache.IncludePatterns = remoteCfg.Cache.IncludePatterns
+			}
+
+			// Merge remote dependencies if specified
+			if len(remoteCfg.Dependencies.Required) > 0 {
+				cfg.Dependencies.Required = remoteCfg.Dependencies.Required
+			}
+			if len(remoteCfg.Dependencies.Optional) > 0 {
+				cfg.Dependencies.Optional = remoteCfg.Dependencies.Optional
+			}
+
+			// Merge remote workspace config if specified
+			if len(remoteCfg.Workspace.Exclude) > 0 {
+				cfg.Workspace.Exclude = remoteCfg.Workspace.Exclude
+			}
+		}
 	}
 
 	// Merge defaults for stages not specified (but keep file values if set)
@@ -114,12 +142,6 @@ func LoadConfig(root string) (*Config, error) {
 		if _, exists := cfg.Stages[name]; !exists {
 			cfg.Stages[name] = defaultStage
 		}
-	}
-
-	// Populate Name field from map key (toml:"-" means it's not deserialized)
-	for name, stage := range cfg.Stages {
-		stage.Name = name
-		cfg.Stages[name] = stage
 	}
 
 	return cfg, nil
@@ -151,115 +173,101 @@ func SaveDefaultConfig(root string, wsConfig *Workspace) error {
 func defaultStages() map[string]Stage {
 	return map[string]Stage{
 		"fmt": {
-			Name:    "fmt",
-			Cmd:     []string{"cargo", "fmt", "--all", "--", "--check"},
-			FixCmd:  []string{"cargo", "fmt", "--all"},
-			Check:   true,
-			Timeout: 120,
-			Enabled: true,
+			Name:      "fmt",
+			Cmd:       []string{"cargo", "fmt", "--all", "--", "--check"},
+			FixCmd:    []string{"cargo", "fmt", "--all"},
+			Check:     true,
+			Timeout:   120,
+			Enabled:   true,
+			DependsOn: []string{},
+			Watch:     []string{"*.rs"},
 		},
 		"clippy": {
-			Name:    "clippy",
-			Cmd:     []string{"cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: true,
+			Name:      "clippy",
+			Cmd:       []string{"cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   true,
+			DependsOn: []string{"fmt"},
+			Watch:     []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"cargo", "test", "--workspace"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 1200,
-			Enabled: true,
+			Name:      "test",
+			Cmd:       []string{"cargo", "test", "--workspace"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   1200,
+			Enabled:   true,
+			DependsOn: []string{"fmt"},
+			Watch:     []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"check": {
-			Name:    "check",
-			Cmd:     []string{"cargo", "check", "--workspace"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false, // Disabled by default, redundant with clippy
+			Name:      "check",
+			Cmd:       []string{"cargo", "check", "--workspace"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"deny": {
-			Name:    "deny",
-			Cmd:     []string{"cargo", "deny", "check"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false, // Requires cargo-deny to be installed
+			Name:      "deny",
+			Cmd:       []string{"cargo", "deny", "check"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"Cargo.toml", "Cargo.lock", "deny.toml"},
 		},
 		"audit": {
-			Name:    "audit",
-			Cmd:     []string{"cargo", "audit"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false, // Requires cargo-audit to be installed
+			Name:      "audit",
+			Cmd:       []string{"cargo", "audit"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"Cargo.toml", "Cargo.lock"},
 		},
 		"machete": {
-			Name:    "machete",
-			Cmd:     []string{"cargo", "machete"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false, // Requires cargo-machete to be installed
+			Name:      "machete",
+			Cmd:       []string{"cargo", "machete"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.rs", "Cargo.toml"},
 		},
 		"taplo": {
-			Name:    "taplo",
-			Cmd:     []string{"taplo", "format", "--check", "."},
-			FixCmd:  []string{"taplo", "format", "."},
-			Check:   true,
-			Timeout: 300,
-			Enabled: false, // Requires taplo to be installed
+			Name:      "taplo",
+			Cmd:       []string{"taplo", "format", "--check", "."},
+			FixCmd:    []string{"taplo", "format", "."},
+			Check:     true,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.toml"},
 		},
 	}
 }
 
-// GetProfile returns the named profile or an error if it doesn't exist.
-func (c *Config) GetProfile(name string) (*Profile, error) {
-	p, ok := c.Profiles[name]
-	if !ok {
-		available := make([]string, 0, len(c.Profiles))
-		for k := range c.Profiles {
-			available = append(available, k)
-		}
-		sort.Strings(available)
-		return nil, fmt.Errorf("unknown profile %q (available: %v)", name, available)
-	}
-	// Validate that all referenced stages exist
-	for _, s := range p.Stages {
-		if _, ok := c.Stages[s]; !ok {
-			return nil, fmt.Errorf("profile %q references unknown stage %q", name, s)
+// ToStageConfigs converts the config stages map to Stage structs
+func (c *Config) ToStageConfigs() map[string]StageConfig {
+	result := make(map[string]StageConfig)
+	for name, stage := range c.Stages {
+		result[name] = StageConfig{
+			Command:                  stage.Cmd,
+			FixCommand:               stage.FixCmd,
+			Timeout:                  stage.Timeout,
+			Enabled:                  stage.Enabled,
+			RespectWorkspaceExcludes: false,
 		}
 	}
-	return &p, nil
-}
-
-// GetProfileStages returns the stages for a profile in priority order.
-func (c *Config) GetProfileStages(profile *Profile) []string {
-	if len(profile.Stages) == 0 {
-		return c.GetEnabledStages()
-	}
-	// Return profile stages in canonical priority order
-	stages := make([]string, len(profile.Stages))
-	copy(stages, profile.Stages)
-	sort.Slice(stages, func(i, j int) bool {
-		pi, oki := stagePriority[stages[i]]
-		pj, okj := stagePriority[stages[j]]
-		if oki && okj {
-			return pi < pj
-		}
-		if oki {
-			return true
-		}
-		if okj {
-			return false
-		}
-		return stages[i] < stages[j]
-	})
-	return stages
+	return result
 }
 
 // GetTimeout returns the timeout for a stage, with fallback to default
@@ -270,29 +278,29 @@ func (c *Config) GetTimeout(stageName string) time.Duration {
 	return 30 * time.Second // Safe default
 }
 
-// GetEnabledStages returns the list of enabled stage names in deterministic
-// priority order (fast checks first). Stages without an explicit priority
-// sort alphabetically after known stages.
+// GetEnabledStages returns the list of enabled stage names in deterministic order
 func (c *Config) GetEnabledStages() []string {
+	// Define default order for common stages to ensure deterministic output
+	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+
 	var enabled []string
-	for name, stage := range c.Stages {
-		if stage.Enabled {
+	// First add stages in predefined order if they exist and are enabled
+	for _, name := range order {
+		if stage, ok := c.Stages[name]; ok && stage.Enabled {
 			enabled = append(enabled, name)
 		}
 	}
-	sort.Slice(enabled, func(i, j int) bool {
-		pi, oki := stagePriority[enabled[i]]
-		pj, okj := stagePriority[enabled[j]]
-		if oki && okj {
-			return pi < pj
+
+	// Then add any remaining enabled stages not in the predefined order
+	seen := make(map[string]bool)
+	for _, name := range order {
+		seen[name] = true
+	}
+	for name, stage := range c.Stages {
+		if !seen[name] && stage.Enabled {
+			enabled = append(enabled, name)
 		}
-		if oki {
-			return true // known stages come first
-		}
-		if okj {
-			return false
-		}
-		return enabled[i] < enabled[j] // alphabetical fallback
-	})
+	}
+
 	return enabled
 }

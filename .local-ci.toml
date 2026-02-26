@@ -1,28 +1,23 @@
-# local-ci configuration for Go project
-# See: https://github.com/stevedores-org/local-ci
+# Local CI configuration for local-ci (Go project)
 
-[cache]
-skip_dirs = [".git", ".github", "scripts", ".claude", "vendor"]
-include_patterns = ["*.go", "go.mod", "go.sum"]
+[project]
+name = "local-ci"
+kind = "go"
+
+[stages]
 
 [stages.fmt]
-command = ["gofmt", "-l", "."]
-fix_command = ["go", "fmt", "./..."]
-timeout = 120
+run = "gofmt -l ."
+fix = "gofmt -w ."
 enabled = true
 
 [stages.vet]
-command = ["go", "vet", "./..."]
-timeout = 300
+run = "go vet ./..."
 enabled = true
 
 [stages.test]
-command = ["go", "test", "./..."]
-timeout = 600
+run = "go test ./..."
 enabled = true
 
-[dependencies]
-optional = []
-
-[workspace]
-exclude = []
+[stage_order]
+stages = ["fmt", "vet", "test"]
