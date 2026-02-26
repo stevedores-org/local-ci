@@ -18,6 +18,14 @@ type Tool struct {
 
 var cargoTools = []Tool{
 	{
+		Name:       "cargo-nextest",
+		Command:    "cargo-nextest",
+		CheckArgs:  []string{"nextest", "--version"},
+		InstallCmd: "cargo install cargo-nextest",
+		ToolType:   "cargo",
+		Optional:   true,
+	},
+	{
 		Name:       "cargo-deny",
 		Command:    "cargo",
 		CheckArgs:  []string{"deny", "help"},

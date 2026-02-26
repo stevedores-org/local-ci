@@ -210,6 +210,60 @@ func TestGetConfigTemplateForType(t *testing.T) {
 	}
 }
 
+// TestDefaultRustTestCommandReturnsValidCommand verifies the test command is well-formed
+func TestDefaultRustTestCommandReturnsValidCommand(t *testing.T) {
+	cmd := defaultRustTestCommand()
+	if len(cmd) < 3 {
+		t.Fatalf("Expected at least 3 elements, got %d: %v", len(cmd), cmd)
+	}
+	if cmd[0] != "cargo" {
+		t.Errorf("Expected first element to be 'cargo', got %s", cmd[0])
+	}
+	// Must be either "test" or "nextest" as second arg
+	if cmd[1] != "test" && cmd[1] != "nextest" {
+		t.Errorf("Expected second element to be 'test' or 'nextest', got %s", cmd[1])
+	}
+}
+
+// TestDefaultRustTestCommandNextestPreferred verifies nextest is used when available
+func TestDefaultRustTestCommandNextestPreferred(t *testing.T) {
+	if !hasCargoNextest() {
+		t.Skip("cargo-nextest not installed, skipping preference test")
+	}
+	cmd := defaultRustTestCommand()
+	if cmd[1] != "nextest" {
+		t.Errorf("Expected 'nextest' when cargo-nextest is available, got %s", cmd[1])
+	}
+	if cmd[2] != "run" {
+		t.Errorf("Expected 'run' as third arg for nextest, got %s", cmd[2])
+	}
+}
+
+// TestHasCargoNextestReturnsBool verifies the detection function works
+func TestHasCargoNextestReturnsBool(t *testing.T) {
+	// Just verify it doesn't panic and returns a bool
+	result := hasCargoNextest()
+	_ = result // type check is sufficient
+}
+
+// TestRustStagesTestCommandIsDefault verifies getRustStages uses dynamic detection
+func TestRustStagesTestCommandIsDefault(t *testing.T) {
+	stages := getRustStages()
+	testStage, ok := stages["test"]
+	if !ok {
+		t.Fatal("Expected 'test' stage in Rust stages")
+	}
+	expected := defaultRustTestCommand()
+	if len(testStage.Cmd) != len(expected) {
+		t.Fatalf("Test stage command length mismatch: got %v, want %v", testStage.Cmd, expected)
+	}
+	for i, v := range expected {
+		if testStage.Cmd[i] != v {
+			t.Errorf("Test stage command[%d] = %s, want %s", i, testStage.Cmd[i], v)
+		}
+	}
+}
+
 // TestPriorityDetection verifies detection priority (Rust > Python > Node > Go > Java > Generic)
 func TestPriorityDetection(t *testing.T) {
 	tmpdir := t.TempDir()
