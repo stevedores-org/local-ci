@@ -18,6 +18,14 @@ type Profile struct {
 	JSON     bool     `toml:"json"`
 }
 
+// Profile defines a named set of overrides for stage selection and flags.
+type Profile struct {
+	Stages   []string `toml:"stages"`
+	FailFast bool     `toml:"fail_fast"`
+	NoCache  bool     `toml:"no_cache"`
+	JSON     bool     `toml:"json"`
+}
+
 // Config represents the .local-ci.toml configuration file
 type Config struct {
 	Cache        CacheConfig        `toml:"cache"`
@@ -68,7 +76,8 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
-		Stages: defaultStages,
+		Stages:   defaultStages,
+		Profiles: map[string]Profile{},
 		Dependencies: DepsConfig{
 			Required: []string{},
 			Optional: []string{},
