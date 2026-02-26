@@ -9,7 +9,8 @@ import (
 )
 
 // Test Fixtures - Create temporary test directories and files
-func createTestWorkspace(t *testing.T) string {
+func createTestWorkspace(t testing.TB) string {
+	t.Helper()
 	tmpDir, err := os.MkdirTemp("", "local-ci-test-*")
 	if err != nil {
 		t.Fatalf("Failed to create temp dir: %v", err)
@@ -286,7 +287,7 @@ func TestToolChecking(t *testing.T) {
 		t.Error("GetMissingTools should return string slice")
 	}
 
-	hints := GetMissingToolsWithHints()
+	hints := GetMissingToolsWithHints(ProjectKindRust)
 	if hints == nil {
 		t.Error("GetMissingToolsWithHints should return map")
 	}
@@ -427,7 +428,7 @@ func isStringSlice(val interface{}) bool {
 
 // Benchmark Tests
 func BenchmarkComputeSourceHash(b *testing.B) {
-	tmpDir := createTestWorkspace(&testing.T{})
+	tmpDir := createTestWorkspace(b)
 	defer os.RemoveAll(tmpDir)
 
 	config, _ := LoadConfig(tmpDir, false)
@@ -440,7 +441,7 @@ func BenchmarkComputeSourceHash(b *testing.B) {
 }
 
 func BenchmarkLoadConfig(b *testing.B) {
-	tmpDir := createTestWorkspace(&testing.T{})
+	tmpDir := createTestWorkspace(b)
 	defer os.RemoveAll(tmpDir)
 
 	b.ResetTimer()

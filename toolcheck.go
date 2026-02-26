@@ -18,6 +18,14 @@ type Tool struct {
 
 var cargoTools = []Tool{
 	{
+		Name:       "cargo-nextest",
+		Command:    "cargo-nextest",
+		CheckArgs:  []string{"nextest", "--version"},
+		InstallCmd: "cargo install cargo-nextest",
+		ToolType:   "cargo",
+		Optional:   true,
+	},
+	{
 		Name:       "cargo-deny",
 		Command:    "cargo",
 		CheckArgs:  []string{"deny", "help"},
@@ -48,6 +56,17 @@ var cargoTools = []Tool{
 		InstallCmd: "cargo install taplo-cli",
 		ToolType:   "binary",
 		Optional:   true,
+	},
+}
+
+var bunTools = []Tool{
+	{
+		Name:       "bun",
+		Command:    "bun",
+		CheckArgs:  []string{"--version"},
+		InstallCmd: "curl -fsSL https://bun.sh/install | bash",
+		ToolType:   "binary",
+		Optional:   false,
 	},
 }
 
@@ -126,12 +145,20 @@ func GetMissingTools() []string {
 	return missing
 }
 
-// GetMissingToolsWithHints returns missing tools with installation hints
-func GetMissingToolsWithHints() map[string]string {
+// GetMissingToolsWithHints returns missing tools with installation hints for the given project kind.
+func GetMissingToolsWithHints(kind ProjectKind) map[string]string {
 	hints := make(map[string]string)
 
-	allTools := append(cargoTools, systemTools...)
-	for _, tool := range allTools {
+	var tools []Tool
+	switch kind {
+	case ProjectKindTypeScript:
+		tools = append(tools, bunTools...)
+	default:
+		tools = append(tools, cargoTools...)
+	}
+	tools = append(tools, systemTools...)
+
+	for _, tool := range tools {
 		if tool.Optional && !CheckToolInstalled(&tool).Found {
 			hints[tool.Name] = tool.InstallCmd
 		}
@@ -151,7 +178,9 @@ func ToolIsAvailable(toolName string) bool {
 
 // getToolByName finds a tool by name
 func getToolByName(name string) *Tool {
-	allTools := append(cargoTools, systemTools...)
+	allTools := make([]Tool, 0, len(cargoTools)+len(systemTools))
+	allTools = append(allTools, cargoTools...)
+	allTools = append(allTools, systemTools...)
 	for _, tool := range allTools {
 		if strings.EqualFold(tool.Name, name) {
 			return &tool
