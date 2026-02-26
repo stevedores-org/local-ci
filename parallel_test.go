@@ -116,11 +116,11 @@ func TestParallelRunnerCacheHit(t *testing.T) {
 	}
 
 	pr := &ParallelRunner{
-		Stages:      stages,
-		Cwd:         dir,
-		NoCache:     false,
-		Cache:       cache,
-		SourceHash: "testhash",
+		Stages:     stages,
+		Cwd:        dir,
+		NoCache:    false,
+		Cache:      cache,
+		SourceHash: "hash123",
 	}
 
 	results := pr.Run()
