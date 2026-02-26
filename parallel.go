@@ -34,7 +34,7 @@ func (r *ParallelRunner) Run() []Result {
 
 	// Track stage completion for dependency resolution
 	completed := make(map[string]bool)
-	var completedMutex sync.Mutex
+	var mu sync.Mutex
 
 	// Result channel for collecting results
 	resultChan := make(chan Result, len(r.Stages))
@@ -54,7 +54,7 @@ func (r *ParallelRunner) Run() []Result {
 
 			// Wait for dependencies
 			for {
-				completedMutex.Lock()
+				mu.Lock()
 				allDone := true
 				for _, dep := range stageDeps[s.Name] {
 					if !completed[dep] {
@@ -62,7 +62,7 @@ func (r *ParallelRunner) Run() []Result {
 						break
 					}
 				}
-				completedMutex.Unlock()
+				mu.Unlock()
 
 				if allDone {
 					break
@@ -72,22 +72,22 @@ func (r *ParallelRunner) Run() []Result {
 
 			// Check fail-fast flag
 			if r.FailFast {
-				completedMutex.Lock()
+				mu.Lock()
 				if len(resultChan) > 0 {
 					// Check if any result is a failure
 					for result := range resultChan {
 						if result.Status != "pass" {
-							completedMutex.Unlock()
-							completedMutex.Lock()
+							mu.Unlock()
+							mu.Lock()
 							completed[s.Name] = true
-							completedMutex.Unlock()
+							mu.Unlock()
 							resultChan <- result // Put it back
 							return
 						}
 						resultChan <- result // Put it back
 					}
 				}
-				completedMutex.Unlock()
+				mu.Unlock()
 			}
 
 			// Acquire semaphore
@@ -99,9 +99,9 @@ func (r *ParallelRunner) Run() []Result {
 			resultChan <- result
 
 			// Mark as completed
-			completedMutex.Lock()
+			mu.Lock()
 			completed[s.Name] = true
-			completedMutex.Unlock()
+			mu.Unlock()
 		}(stage)
 	}
 
@@ -168,8 +168,7 @@ func (r *ParallelRunner) executeStage(stage Stage) Result {
 		}
 	}
 
-	// Update cache
-	r.Cache[stage.Name] = r.SourceHash
+	// Note: cache update is done by the caller after collecting results
 
 	return Result{
 		Name:     stage.Name,

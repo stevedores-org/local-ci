@@ -50,7 +50,7 @@ type Stage struct {
 	Check     bool     // true if this is a --check command
 	Timeout   int      // in seconds
 	Enabled   bool
-	DependsOn []string // stage names this stage depends on
+	DependsOn []string `toml:"depends_on"` // stage names this stage depends on
 	Watch     []string // file patterns this stage cares about (for granular caching)
 }
 
