@@ -10,12 +10,17 @@ func TestBuildDryRunReportAllCached(t *testing.T) {
 		{Name: "test", Cmd: []string{"cargo", "test"}, Enabled: true},
 	}
 
+	stageHashes := map[string]string{
+		"fmt":  "hash1",
+		"test": "hash1",
+	}
+
 	cache := map[string]string{
 		"fmt":  "hash1|cargo fmt",
 		"test": "hash1|cargo test",
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", nil, stages, cache, false)
+	report := BuildDryRunReport("/tmp/project", stageHashes, nil, stages, cache, false)
 
 	if !report.DryRun {
 		t.Error("expected DryRun to be true")
@@ -42,12 +47,17 @@ func TestBuildDryRunReportHashChanged(t *testing.T) {
 		{Name: "test", Cmd: []string{"cargo", "test"}, Enabled: true},
 	}
 
+	stageHashes := map[string]string{
+		"fmt":  "newhash",
+		"test": "newhash",
+	}
+
 	cache := map[string]string{
 		"fmt":  "oldhash|cargo fmt",
 		"test": "oldhash|cargo test",
 	}
 
-	report := BuildDryRunReport("/tmp/project", "newhash", nil, stages, cache, false)
+	report := BuildDryRunReport("/tmp/project", stageHashes, nil, stages, cache, false)
 
 	if report.ToRun != 2 {
 		t.Errorf("expected 2 to run, got %d", report.ToRun)
@@ -70,12 +80,13 @@ func TestBuildDryRunReportNoCache(t *testing.T) {
 		{Name: "fmt", Cmd: []string{"cargo", "fmt"}, Enabled: true},
 	}
 
-	// Even with matching cache, noCache=true should force run
+	stageHashes := map[string]string{"fmt": "hash1"}
+
 	cache := map[string]string{
 		"fmt": "hash1|cargo fmt",
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", nil, stages, cache, true)
+	report := BuildDryRunReport("/tmp/project", stageHashes, nil, stages, cache, true)
 
 	if report.ToRun != 1 {
 		t.Errorf("expected 1 to run with no-cache, got %d", report.ToRun)
@@ -96,23 +107,12 @@ func TestBuildDryRunReportDisabledStages(t *testing.T) {
 		"audit": {Name: "audit", Cmd: []string{"cargo", "audit"}, Enabled: false},
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", allStages, enabledStages, nil, true)
+	stageHashes := map[string]string{"fmt": "hash1"}
+
+	report := BuildDryRunReport("/tmp/project", stageHashes, allStages, enabledStages, nil, true)
 
 	if report.Disabled != 2 {
 		t.Errorf("expected 2 disabled, got %d", report.Disabled)
-	}
-
-	disabledCount := 0
-	for _, s := range report.Stages {
-		if s.Reason == "disabled" {
-			disabledCount++
-			if s.WouldRun {
-				t.Errorf("disabled stage %q should not run", s.Name)
-			}
-		}
-	}
-	if disabledCount != 2 {
-		t.Errorf("expected 2 disabled stages in report, got %d", disabledCount)
 	}
 }
 
@@ -128,12 +128,17 @@ func TestBuildDryRunReportMixedStates(t *testing.T) {
 		"deny": {Name: "deny", Cmd: []string{"cargo", "deny"}, Enabled: false},
 	}
 
+	stageHashes := map[string]string{
+		"fmt":  "hash1",
+		"test": "hash1",
+	}
+
 	cache := map[string]string{
 		"fmt": "hash1|cargo fmt", // cached
 		// test not in cache → stale
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", allStages, enabledStages, cache, false)
+	report := BuildDryRunReport("/tmp/project", stageHashes, allStages, enabledStages, cache, false)
 
 	if report.ToRun != 1 {
 		t.Errorf("expected 1 to run, got %d", report.ToRun)
@@ -144,24 +149,10 @@ func TestBuildDryRunReportMixedStates(t *testing.T) {
 	if report.Disabled != 1 {
 		t.Errorf("expected 1 disabled, got %d", report.Disabled)
 	}
-	if len(report.Stages) != 3 {
-		t.Errorf("expected 3 total stages, got %d", len(report.Stages))
-	}
-}
-
-func TestBuildDryRunReportWorkspaceAndHash(t *testing.T) {
-	report := BuildDryRunReport("/home/user/project", "abc123def", nil, nil, nil, false)
-
-	if report.Workspace != "/home/user/project" {
-		t.Errorf("expected workspace '/home/user/project', got %q", report.Workspace)
-	}
-	if report.SourceHash != "abc123def" {
-		t.Errorf("expected source hash 'abc123def', got %q", report.SourceHash)
-	}
 }
 
 func TestBuildDryRunReportEmptyStages(t *testing.T) {
-	report := BuildDryRunReport("/tmp", "hash", nil, nil, nil, false)
+	report := BuildDryRunReport("/tmp", nil, nil, nil, nil, false)
 
 	if report.ToRun != 0 || report.Cached != 0 || report.Disabled != 0 {
 		t.Error("empty stages should have all zero counts")

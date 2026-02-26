@@ -141,6 +141,7 @@ func defaultStages() map[string]Stage {
 			Check:   true,
 			Timeout: 120,
 			Enabled: true,
+			Watch:   []string{"*.rs"},
 		},
 		"clippy": {
 			Name:    "clippy",
@@ -149,6 +150,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 600,
 			Enabled: true,
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"test": {
 			Name:    "test",
@@ -157,6 +159,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 1200,
 			Enabled: true,
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"check": {
 			Name:    "check",
@@ -165,6 +168,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 600,
 			Enabled: false, // Disabled by default, redundant with clippy
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"deny": {
 			Name:    "deny",
@@ -173,6 +177,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 300,
 			Enabled: false, // Requires cargo-deny to be installed
+			Watch:   []string{"Cargo.toml", "Cargo.lock", "deny.toml"},
 		},
 		"audit": {
 			Name:    "audit",
@@ -181,6 +186,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 300,
 			Enabled: false, // Requires cargo-audit to be installed
+			Watch:   []string{"Cargo.toml", "Cargo.lock"},
 		},
 		"machete": {
 			Name:    "machete",
@@ -189,6 +195,7 @@ func defaultStages() map[string]Stage {
 			Check:   false,
 			Timeout: 300,
 			Enabled: false, // Requires cargo-machete to be installed
+			Watch:   []string{"*.rs", "Cargo.toml"},
 		},
 		"taplo": {
 			Name:    "taplo",
@@ -197,6 +204,7 @@ func defaultStages() map[string]Stage {
 			Check:   true,
 			Timeout: 300,
 			Enabled: false, // Requires taplo to be installed
+			Watch:   []string{"*.toml"},
 		},
 	}
 }

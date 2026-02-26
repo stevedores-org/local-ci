@@ -17,34 +17,35 @@ type DryRunStage struct {
 
 // DryRunReport is the full dry-run output.
 type DryRunReport struct {
-	DryRun     bool          `json:"dry_run"`
-	Workspace  string        `json:"workspace"`
-	SourceHash string        `json:"source_hash"`
-	Stages     []DryRunStage `json:"stages"`
-	ToRun      int           `json:"to_run"`
-	Cached     int           `json:"cached"`
-	Disabled   int           `json:"disabled"`
+	DryRun      bool              `json:"dry_run"`
+	Workspace   string            `json:"workspace"`
+	StageHashes map[string]string `json:"stage_hashes"`
+	Stages      []DryRunStage     `json:"stages"`
+	ToRun       int               `json:"to_run"`
+	Cached      int               `json:"cached"`
+	Disabled    int               `json:"disabled"`
 }
 
 // BuildDryRunReport computes a dry-run report for the given stages.
 func BuildDryRunReport(
 	cwd string,
-	sourceHash string,
+	stageHashes map[string]string,
 	allStages map[string]Stage,
 	enabledStages []Stage,
 	cache map[string]string,
 	noCache bool,
 ) DryRunReport {
 	report := DryRunReport{
-		DryRun:     true,
-		Workspace:  cwd,
-		SourceHash: sourceHash,
+		DryRun:      true,
+		Workspace:   cwd,
+		StageHashes: stageHashes,
 	}
 
 	// Report on enabled stages
 	for _, stage := range enabledStages {
 		cmdStr := strings.Join(stage.Cmd, " ")
-		stageCacheKey := sourceHash + "|" + cmdStr
+		stageHash := stageHashes[stage.Name]
+		stageCacheKey := stageHash + "|" + cmdStr
 
 		ds := DryRunStage{
 			Name:    stage.Name,
@@ -90,8 +91,7 @@ func BuildDryRunReport(
 func PrintDryRunHuman(report DryRunReport) {
 	fmt.Println("Dry run — no commands will be executed")
 	fmt.Println()
-	fmt.Printf("  Workspace:   %s\n", report.Workspace)
-	fmt.Printf("  Source hash: %s\n", report.SourceHash)
+	fmt.Printf("  Workspace: %s\n", report.Workspace)
 	fmt.Println()
 	fmt.Println("  Stages:")
 

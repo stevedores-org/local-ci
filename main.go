@@ -54,6 +54,7 @@ type Stage struct {
 	Timeout   int      `toml:"timeout"`     // in seconds
 	Enabled   bool     `toml:"enabled"`
 	DependsOn string   `toml:"depends_on"` // stage that must complete before this one
+	Watch     []string `toml:"watch"`       // file patterns this stage cares about (defaults to cache.include_patterns)
 }
 
 type Result struct {
@@ -213,9 +214,9 @@ func main() {
 		}
 	}
 
-	// Compute source hash
+	// Compute per-stage content hashes
 	var warnings []string
-	sourceHash, err := computeSourceHash(cwd, config, ws)
+	stageHashes, err := computeStageHashes(cwd, config, ws, stages)
 	if err != nil {
 		msg := fmt.Sprintf("hash computation failed: %v", err)
 		warnings = append(warnings, msg)
@@ -223,6 +224,9 @@ func main() {
 			warnf("Warning: %s\n", msg)
 		}
 		*flagNoCache = true
+	}
+	if stageHashes == nil {
+		stageHashes = make(map[string]string)
 	}
 
 	// Load cache if enabled
@@ -236,7 +240,7 @@ func main() {
 
 	// Dry-run mode
 	if *flagDryRun {
-		report := BuildDryRunReport(cwd, sourceHash, config.Stages, stages, cache, *flagNoCache)
+		report := BuildDryRunReport(cwd, stageHashes, config.Stages, stages, cache, *flagNoCache)
 		if *flagJSON {
 			PrintDryRunJSON(report)
 		} else {
@@ -287,7 +291,7 @@ func main() {
 			Cwd:         cwd,
 			NoCache:     *flagNoCache,
 			Cache:       cache,
-			SourceHash:  sourceHash,
+			StageHashes: stageHashes,
 			Verbose:     *flagVerbose,
 			JSON:        *flagJSON,
 			FailFast:    *flagFailFast,
@@ -302,7 +306,7 @@ func main() {
 		// Update cache for passing stages
 		for _, r := range results {
 			if r.Status == "pass" && !r.CacheHit {
-				cache[r.Name] = sourceHash + "|" + r.Command
+				cache[r.Name] = stageHashes[r.Name] + "|" + r.Command
 			}
 		}
 
@@ -328,7 +332,8 @@ func main() {
 		for _, stage := range stages {
 			stageStart := time.Now()
 			cmdStr := strings.Join(stage.Cmd, " ")
-			stageCacheKey := sourceHash + "|" + cmdStr
+			stageHash := stageHashes[stage.Name]
+			stageCacheKey := stageHash + "|" + cmdStr
 
 			// Check cache
 			if !*flagNoCache && cache[stage.Name] == stageCacheKey {
@@ -538,11 +543,31 @@ func toJSONResults(results []Result) []ResultJSON {
 	return out
 }
 
-// computeSourceHash computes MD5 hash of Rust source files
-func computeSourceHash(root string, config *Config, ws *Workspace) (string, error) {
+// matchesPatterns checks if a filename matches any of the given glob patterns.
+// Supports: "*.rs" (extension match), "Cargo.toml" (exact name match).
+func matchesPatterns(name string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if strings.HasPrefix(pattern, "*.") {
+			ext := pattern[1:] // e.g. ".rs"
+			if strings.HasSuffix(name, ext) {
+				return true
+			}
+		} else if name == pattern {
+			return true
+		}
+	}
+	return false
+}
+
+// computeStageHash computes an MD5 hash of files matching the given watch patterns.
+// Falls back to config.Cache.IncludePatterns if patterns is empty.
+func computeStageHash(root string, config *Config, ws *Workspace, patterns []string) (string, error) {
+	if len(patterns) == 0 {
+		patterns = config.Cache.IncludePatterns
+	}
+
 	h := md5.New()
 
-	// Build skip set from config
 	skipDirs := make(map[string]bool)
 	for _, dir := range config.Cache.SkipDirs {
 		skipDirs[dir] = true
@@ -553,45 +578,27 @@ func computeSourceHash(root string, config *Config, ws *Workspace) (string, erro
 			return err
 		}
 
-		// Skip directories in config
 		if d.IsDir() {
 			if skipDirs[d.Name()] {
 				return filepath.SkipDir
 			}
+			return nil
 		}
 
 		// Skip excluded workspace members
 		if ws != nil && !ws.IsSingle {
 			relPath, err := filepath.Rel(root, path)
 			if err == nil && ws.IsExcluded(relPath) {
-				if d.IsDir() {
-					return filepath.SkipDir
-				}
 				return nil
 			}
 		}
 
-		// Hash files matching include patterns
-		if !d.IsDir() {
-			shouldHash := false
-			for _, pattern := range config.Cache.IncludePatterns {
-				// Simple pattern matching: *.rs, *.toml
-				if strings.HasPrefix(pattern, "*.") {
-					ext := pattern[1:] // Get .rs or .toml
-					if strings.HasSuffix(d.Name(), ext) {
-						shouldHash = true
-						break
-					}
-				}
+		if matchesPatterns(d.Name(), patterns) {
+			data, err := os.ReadFile(path)
+			if err != nil {
+				return nil // Skip unreadable files
 			}
-
-			if shouldHash {
-				data, err := os.ReadFile(path)
-				if err != nil {
-					return nil // Skip unreadable files
-				}
-				h.Write(data)
-			}
+			h.Write(data)
 		}
 
 		return nil
@@ -602,6 +609,51 @@ func computeSourceHash(root string, config *Config, ws *Workspace) (string, erro
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// computeStageHashes computes per-stage content hashes. Each stage's hash only
+// covers files matching its Watch patterns (or the global IncludePatterns fallback).
+// Stages with identical effective patterns share a single filesystem walk.
+func computeStageHashes(root string, config *Config, ws *Workspace, stages []Stage) (map[string]string, error) {
+	type patternKey string
+	effectivePatterns := func(watch []string) []string {
+		if len(watch) > 0 {
+			return watch
+		}
+		return config.Cache.IncludePatterns
+	}
+	toKey := func(patterns []string) patternKey {
+		sorted := make([]string, len(patterns))
+		copy(sorted, patterns)
+		sort.Strings(sorted)
+		return patternKey(strings.Join(sorted, "\x00"))
+	}
+
+	hashCache := make(map[patternKey]string)
+	result := make(map[string]string, len(stages))
+
+	for _, stage := range stages {
+		ep := effectivePatterns(stage.Watch)
+		key := toKey(ep)
+		if hash, ok := hashCache[key]; ok {
+			result[stage.Name] = hash
+			continue
+		}
+		hash, err := computeStageHash(root, config, ws, stage.Watch)
+		if err != nil {
+			return nil, err
+		}
+		hashCache[key] = hash
+		result[stage.Name] = hash
+	}
+
+	return result, nil
+}
+
+// computeSourceHash computes MD5 hash of source files using global include patterns.
+// Kept for backward compatibility.
+func computeSourceHash(root string, config *Config, ws *Workspace) (string, error) {
+	return computeStageHash(root, config, ws, nil)
 }
 
 // loadCache loads the cache from .local-ci-cache

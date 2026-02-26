@@ -78,6 +78,7 @@ func getRustStages() map[string]Stage {
 			Check:   true,
 			Timeout: 120,
 			Enabled: true,
+			Watch:   []string{"*.rs"},
 		},
 		"clippy": {
 			Name:    "clippy",
@@ -86,6 +87,7 @@ func getRustStages() map[string]Stage {
 			Check:   false,
 			Timeout: 600,
 			Enabled: true,
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"test": {
 			Name:    "test",
@@ -102,6 +104,7 @@ func getRustStages() map[string]Stage {
 			Check:   false,
 			Timeout: 600,
 			Enabled: false,
+			Watch:   []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 	}
 }
@@ -307,21 +310,25 @@ command = ["cargo", "fmt", "--all", "--", "--check"]
 fix_command = ["cargo", "fmt", "--all"]
 timeout = 120
 enabled = true
+watch = ["*.rs"]
 
 [stages.clippy]
 command = ["cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"]
 timeout = 600
 enabled = true
+watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
 
 [stages.test]
 command = ["cargo", "test", "--workspace"]
 timeout = 1200
 enabled = true
+watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
 
 [stages.check]
 command = ["cargo", "check", "--workspace"]
 timeout = 600
 enabled = false
+watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
 
 [dependencies]
 optional = []
@@ -354,6 +361,7 @@ enabled = false
 command = ["pytest"]
 timeout = 600
 enabled = false
+watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
 
 [dependencies]
 optional = []
@@ -386,6 +394,7 @@ enabled = false
 command = ["npm", "run", "build"]
 timeout = 600
 enabled = false
+watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
 
 [dependencies]
 optional = []

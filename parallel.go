@@ -17,7 +17,7 @@ type ParallelRunner struct {
 	Cwd         string
 	NoCache     bool
 	Cache       map[string]string
-	SourceHash  string
+	StageHashes map[string]string // per-stage content hashes
 	Verbose     bool
 	JSON        bool
 	FailFast    bool
@@ -177,7 +177,7 @@ func (pr *ParallelRunner) concurrency() int {
 func (pr *ParallelRunner) executeStage(stage Stage) Result {
 	stageStart := time.Now()
 	cmdStr := strings.Join(stage.Cmd, " ")
-	stageCacheKey := pr.SourceHash + "|" + cmdStr
+	stageCacheKey := pr.StageHashes[stage.Name] + "|" + cmdStr
 
 	// Check cache (protected for concurrent reads during parallel execution)
 	pr.cacheMu.RLock()
