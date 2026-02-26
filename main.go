@@ -71,6 +71,7 @@ type PipelineReport struct {
 	DurationMS int64        `json:"duration_ms"`
 	Passed     int          `json:"passed"`
 	Failed     int          `json:"failed"`
+	Warnings   []string     `json:"warnings,omitempty"`
 	Results    []ResultJSON `json:"results"`
 }
 
@@ -213,9 +214,14 @@ func main() {
 	}
 
 	// Compute source hash
+	var warnings []string
 	sourceHash, err := computeSourceHash(cwd, config, ws)
-	if err != nil && *flagVerbose {
-		warnf("Hash computation failed: %v", err)
+	if err != nil {
+		msg := fmt.Sprintf("hash computation failed: %v", err)
+		warnings = append(warnings, msg)
+		if !*flagJSON {
+			warnf("Warning: %s\n", msg)
+		}
 		*flagNoCache = true
 	}
 
@@ -444,6 +450,7 @@ func main() {
 			DurationMS: totalDuration.Milliseconds(),
 			Passed:     passCount,
 			Failed:     failCount,
+			Warnings:   warnings,
 			Results:    toJSONResults(results),
 		}
 		enc := json.NewEncoder(os.Stdout)
