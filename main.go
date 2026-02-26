@@ -36,12 +36,11 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
 
-var version = "0.5.0" // Profile support for dev/ci/agent contexts
+var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
 
 type Stage struct {
 	Name      string
@@ -56,7 +55,6 @@ type Stage struct {
 
 type Result struct {
 	Name     string
-	Command  string
 	Status   string
 	Duration time.Duration
 	Output   string
@@ -116,8 +114,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, Node.js, Go, Java, and custom projects\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
-		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n")
-		fmt.Fprintf(os.Stderr, "  serve     Start MCP server on stdio for AI agent integration\n\n")
+		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")
 		fmt.Fprintf(os.Stderr, "Examples:\n")
 		fmt.Fprintf(os.Stderr, "  local-ci              Run enabled stages for your project\n")
 		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
@@ -157,7 +154,6 @@ func main() {
 		if err := cmdServe(cwd); err != nil {
 			fatalf("MCP server error: %v", err)
 		}
-		return
 	}
 
 	// Load configuration
@@ -206,26 +202,6 @@ func main() {
 		warnf("Workspace detection failed: %v", err)
 	}
 
-	// Apply profile overrides
-	var activeProfile *Profile
-	if *flagProfile != "" {
-		p, err := config.GetProfile(*flagProfile)
-		if err != nil {
-			fatalf("%v", err)
-		}
-		activeProfile = p
-		// Profile flags override CLI defaults (but explicit CLI flags win)
-		if p.FailFast && !isFlagSet("fail-fast") {
-			*flagFailFast = true
-		}
-		if p.NoCache && !isFlagSet("no-cache") {
-			*flagNoCache = true
-		}
-		if p.JSON && !isFlagSet("json") {
-			*flagJSON = true
-		}
-	}
-
 	if *flagList {
 		fmt.Printf("Available stages:\n")
 		for name := range config.Stages {
@@ -248,15 +224,9 @@ func main() {
 		}
 	}
 
-	// If no stages specified, use profile stages or enabled defaults
+	// If no stages specified, use enabled defaults
 	if len(stages) == 0 {
-		var stageNames []string
-		if activeProfile != nil {
-			stageNames = config.GetProfileStages(activeProfile)
-		} else {
-			stageNames = config.GetEnabledStages()
-		}
-		for _, name := range stageNames {
+		for _, name := range config.GetEnabledStages() {
 			stages = append(stages, stageMap[name])
 		}
 	}
@@ -811,17 +781,6 @@ func updateGitignore(path string, entry string) error {
 	content += entry + "\n"
 
 	return os.WriteFile(path, []byte(content), 0644)
-}
-
-// isFlagSet returns true if the named flag was explicitly provided on the command line.
-func isFlagSet(name string) bool {
-	found := false
-	flag.Visit(func(f *flag.Flag) {
-		if f.Name == name {
-			found = true
-		}
-	})
-	return found
 }
 
 // Printing helpers

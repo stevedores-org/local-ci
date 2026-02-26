@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -20,7 +19,7 @@ type Profile struct {
 
 // Profile defines a named set of overrides for stage selection and flags.
 type Profile struct {
-	Stages   []string `toml:"stages"`
+	Stages   []string `toml:"stages"` // stage names to enable (overrides enabled)
 	FailFast bool     `toml:"fail_fast"`
 	NoCache  bool     `toml:"no_cache"`
 	JSON     bool     `toml:"json"`
@@ -76,8 +75,7 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
-		Stages:   defaultStages,
-		Profiles: map[string]Profile{},
+		Stages: defaultStages,
 		Dependencies: DepsConfig{
 			Required: []string{},
 			Optional: []string{},
