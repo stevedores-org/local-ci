@@ -11,21 +11,12 @@ func TestBuildDryRunReportAllCached(t *testing.T) {
 	}
 
 	cache := map[string]string{
-		"fmt":  "hash1|cargo fmt",
-		"test": "hash1|cargo test",
+		"fmt":  "hash1",
+		"test": "hash1",
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", nil, stages, cache, false)
+	report := BuildDryRunReport(stages, cache, "hash1", false)
 
-	if !report.DryRun {
-		t.Error("expected DryRun to be true")
-	}
-	if report.ToRun != 0 {
-		t.Errorf("expected 0 to run, got %d", report.ToRun)
-	}
-	if report.Cached != 2 {
-		t.Errorf("expected 2 cached, got %d", report.Cached)
-	}
 	for _, s := range report.Stages {
 		if s.WouldRun {
 			t.Errorf("stage %q should not run (cached)", s.Name)
@@ -43,18 +34,12 @@ func TestBuildDryRunReportHashChanged(t *testing.T) {
 	}
 
 	cache := map[string]string{
-		"fmt":  "oldhash|cargo fmt",
-		"test": "oldhash|cargo test",
+		"fmt":  "oldhash",
+		"test": "oldhash",
 	}
 
-	report := BuildDryRunReport("/tmp/project", "newhash", nil, stages, cache, false)
+	report := BuildDryRunReport(stages, cache, "newhash", false)
 
-	if report.ToRun != 2 {
-		t.Errorf("expected 2 to run, got %d", report.ToRun)
-	}
-	if report.Cached != 0 {
-		t.Errorf("expected 0 cached, got %d", report.Cached)
-	}
 	for _, s := range report.Stages {
 		if !s.WouldRun {
 			t.Errorf("stage %q should run (hash changed)", s.Name)
@@ -70,37 +55,30 @@ func TestBuildDryRunReportNoCache(t *testing.T) {
 		{Name: "fmt", Cmd: []string{"cargo", "fmt"}, Enabled: true},
 	}
 
-	// Even with matching cache, noCache=true should force run
 	cache := map[string]string{
-		"fmt": "hash1|cargo fmt",
+		"fmt": "hash1",
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", nil, stages, cache, true)
+	report := BuildDryRunReport(stages, cache, "hash1", true)
 
-	if report.ToRun != 1 {
-		t.Errorf("expected 1 to run with no-cache, got %d", report.ToRun)
+	if len(report.Stages) != 1 {
+		t.Fatalf("expected 1 stage, got %d", len(report.Stages))
 	}
-	if report.Stages[0].Reason != "no_cache" {
-		t.Errorf("expected reason 'no_cache', got %q", report.Stages[0].Reason)
+	if !report.Stages[0].WouldRun {
+		t.Error("stage should run with no-cache flag")
+	}
+	if report.Stages[0].Reason != "no_cache_flag" {
+		t.Errorf("expected reason 'no_cache_flag', got %q", report.Stages[0].Reason)
 	}
 }
 
 func TestBuildDryRunReportDisabledStages(t *testing.T) {
-	enabledStages := []Stage{
+	stages := []Stage{
 		{Name: "fmt", Cmd: []string{"cargo", "fmt"}, Enabled: true},
+		{Name: "deny", Cmd: []string{"cargo", "deny"}, Enabled: false},
 	}
 
-	allStages := map[string]Stage{
-		"fmt":   {Name: "fmt", Cmd: []string{"cargo", "fmt"}, Enabled: true},
-		"deny":  {Name: "deny", Cmd: []string{"cargo", "deny"}, Enabled: false},
-		"audit": {Name: "audit", Cmd: []string{"cargo", "audit"}, Enabled: false},
-	}
-
-	report := BuildDryRunReport("/tmp/project", "hash1", allStages, enabledStages, nil, true)
-
-	if report.Disabled != 2 {
-		t.Errorf("expected 2 disabled, got %d", report.Disabled)
-	}
+	report := BuildDryRunReport(stages, nil, "hash1", true)
 
 	disabledCount := 0
 	for _, s := range report.Stages {
@@ -111,59 +89,42 @@ func TestBuildDryRunReportDisabledStages(t *testing.T) {
 			}
 		}
 	}
-	if disabledCount != 2 {
-		t.Errorf("expected 2 disabled stages in report, got %d", disabledCount)
+	if disabledCount != 1 {
+		t.Errorf("expected 1 disabled stage, got %d", disabledCount)
 	}
 }
 
 func TestBuildDryRunReportMixedStates(t *testing.T) {
-	enabledStages := []Stage{
+	stages := []Stage{
 		{Name: "fmt", Cmd: []string{"cargo", "fmt"}, Enabled: true},
 		{Name: "test", Cmd: []string{"cargo", "test"}, Enabled: true},
-	}
-
-	allStages := map[string]Stage{
-		"fmt":  {Name: "fmt", Cmd: []string{"cargo", "fmt"}, Enabled: true},
-		"test": {Name: "test", Cmd: []string{"cargo", "test"}, Enabled: true},
-		"deny": {Name: "deny", Cmd: []string{"cargo", "deny"}, Enabled: false},
+		{Name: "deny", Cmd: []string{"cargo", "deny"}, Enabled: false},
 	}
 
 	cache := map[string]string{
-		"fmt": "hash1|cargo fmt", // cached
-		// test not in cache → stale
+		"fmt": "hash1", // cached
+		// test not cached
 	}
 
-	report := BuildDryRunReport("/tmp/project", "hash1", allStages, enabledStages, cache, false)
+	report := BuildDryRunReport(stages, cache, "hash1", false)
 
-	if report.ToRun != 1 {
-		t.Errorf("expected 1 to run, got %d", report.ToRun)
-	}
-	if report.Cached != 1 {
-		t.Errorf("expected 1 cached, got %d", report.Cached)
-	}
-	if report.Disabled != 1 {
-		t.Errorf("expected 1 disabled, got %d", report.Disabled)
-	}
 	if len(report.Stages) != 3 {
-		t.Errorf("expected 3 total stages, got %d", len(report.Stages))
+		t.Errorf("expected 3 stages, got %d", len(report.Stages))
 	}
 }
 
-func TestBuildDryRunReportWorkspaceAndHash(t *testing.T) {
-	report := BuildDryRunReport("/home/user/project", "abc123def", nil, nil, nil, false)
+func TestBuildDryRunReportSourceHash(t *testing.T) {
+	report := BuildDryRunReport(nil, nil, "abc123def", false)
 
-	if report.Workspace != "/home/user/project" {
-		t.Errorf("expected workspace '/home/user/project', got %q", report.Workspace)
-	}
 	if report.SourceHash != "abc123def" {
 		t.Errorf("expected source hash 'abc123def', got %q", report.SourceHash)
 	}
 }
 
 func TestBuildDryRunReportEmptyStages(t *testing.T) {
-	report := BuildDryRunReport("/tmp", "hash", nil, nil, nil, false)
+	report := BuildDryRunReport(nil, nil, "hash", false)
 
-	if report.ToRun != 0 || report.Cached != 0 || report.Disabled != 0 {
-		t.Error("empty stages should have all zero counts")
+	if len(report.Stages) != 0 {
+		t.Errorf("expected 0 stages, got %d", len(report.Stages))
 	}
 }

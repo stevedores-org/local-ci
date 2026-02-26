@@ -7,118 +7,85 @@ import (
 	"strings"
 )
 
-// DryRunStage describes what would happen to a stage during a dry run.
+// DryRunStage represents a single stage in dry-run output
 type DryRunStage struct {
 	Name     string `json:"name"`
 	Command  string `json:"command"`
 	WouldRun bool   `json:"would_run"`
-	Reason   string `json:"reason"` // "cached", "hash_changed", "disabled", "no_cache"
+	Reason   string `json:"reason"` // "cached", "hash_changed", "disabled", "no_cache_flag"
 }
 
-// DryRunReport is the full dry-run output.
+// DryRunReport represents the overall dry-run output
 type DryRunReport struct {
-	DryRun     bool          `json:"dry_run"`
 	Workspace  string        `json:"workspace"`
 	SourceHash string        `json:"source_hash"`
 	Stages     []DryRunStage `json:"stages"`
-	ToRun      int           `json:"to_run"`
-	Cached     int           `json:"cached"`
-	Disabled   int           `json:"disabled"`
 }
 
-// BuildDryRunReport computes a dry-run report for the given stages.
-func BuildDryRunReport(
-	cwd string,
-	sourceHash string,
-	allStages map[string]Stage,
-	enabledStages []Stage,
-	cache map[string]string,
-	noCache bool,
-) DryRunReport {
-	report := DryRunReport{
-		DryRun:     true,
-		Workspace:  cwd,
-		SourceHash: sourceHash,
-	}
+// BuildDryRunReport creates a dry-run report for the given stages
+func BuildDryRunReport(stages []Stage, cache map[string]string, sourceHash string, noCache bool) DryRunReport {
+	workspace, _ := os.Getwd()
 
-	// Report on enabled stages
-	for _, stage := range enabledStages {
-		cmdStr := strings.Join(stage.Cmd, " ")
-		stageCacheKey := sourceHash + "|" + cmdStr
-
-		ds := DryRunStage{
+	var dryRunStages []DryRunStage
+	for _, stage := range stages {
+		dryRunStage := DryRunStage{
 			Name:    stage.Name,
-			Command: cmdStr,
+			Command: strings.Join(stage.Cmd, " "),
 		}
 
-		if noCache {
-			ds.WouldRun = true
-			ds.Reason = "no_cache"
-			report.ToRun++
-		} else if cache[stage.Name] == stageCacheKey {
-			ds.WouldRun = false
-			ds.Reason = "cached"
-			report.Cached++
+		// Determine if stage would run and reason
+		if !stage.Enabled {
+			dryRunStage.WouldRun = false
+			dryRunStage.Reason = "disabled"
+		} else if noCache {
+			dryRunStage.WouldRun = true
+			dryRunStage.Reason = "no_cache_flag"
+		} else if cache[stage.Name] == sourceHash {
+			dryRunStage.WouldRun = false
+			dryRunStage.Reason = "cached"
 		} else {
-			ds.WouldRun = true
-			ds.Reason = "hash_changed"
-			report.ToRun++
+			dryRunStage.WouldRun = true
+			dryRunStage.Reason = "hash_changed"
 		}
 
-		report.Stages = append(report.Stages, ds)
+		dryRunStages = append(dryRunStages, dryRunStage)
 	}
 
-	// Report on disabled stages
-	for name, stage := range allStages {
-		if stage.Enabled {
-			continue
-		}
-		cmdStr := strings.Join(stage.Cmd, " ")
-		report.Stages = append(report.Stages, DryRunStage{
-			Name:     name,
-			Command:  cmdStr,
-			WouldRun: false,
-			Reason:   "disabled",
-		})
-		report.Disabled++
+	return DryRunReport{
+		Workspace:  workspace,
+		SourceHash: sourceHash,
+		Stages:     dryRunStages,
 	}
-
-	return report
 }
 
-// PrintDryRunHuman prints a human-readable dry-run report.
-func PrintDryRunHuman(report DryRunReport) {
-	fmt.Println("Dry run — no commands will be executed")
-	fmt.Println()
-	fmt.Printf("  Workspace:   %s\n", report.Workspace)
-	fmt.Printf("  Source hash: %s\n", report.SourceHash)
-	fmt.Println()
-	fmt.Println("  Stages:")
-
-	idx := 1
-	for _, s := range report.Stages {
-		tag := ""
-		switch s.Reason {
-		case "cached":
-			tag = "[CACHED - would skip]"
-		case "hash_changed":
-			tag = "[STALE - would run]"
-		case "no_cache":
-			tag = "[NO CACHE - would run]"
-		case "disabled":
-			tag = "[DISABLED]"
-		}
-		fmt.Printf("    %d. %-12s %-40s %s\n", idx, s.Name, s.Command, tag)
-		idx++
-	}
-
-	fmt.Println()
-	fmt.Printf("  Estimated: %d to run, %d cached, %d disabled\n", report.ToRun, report.Cached, report.Disabled)
-}
-
-// PrintDryRunJSON prints the dry-run report as JSON.
+// PrintDryRunJSON prints dry-run report in JSON format
 func PrintDryRunJSON(report DryRunReport) {
-	enc := json.NewEncoder(os.Stdout)
-	enc.SetIndent("", "  ")
-	_ = enc.Encode(report)
+	data, _ := json.MarshalIndent(report, "", "  ")
+	fmt.Println(string(data))
+}
+
+// PrintDryRunHuman prints dry-run report in human-readable format
+func PrintDryRunHuman(report DryRunReport) {
+	fmt.Printf("📋 Dry-run report for: %s\n", report.Workspace)
+	fmt.Printf("   Source hash: %s\n\n", report.SourceHash)
+
+	fmt.Println("Stages:")
+	for _, stage := range report.Stages {
+		status := "✗"
+		if stage.WouldRun {
+			status = "✓"
+		}
+		fmt.Printf("  %s %s\n", status, stage.Name)
+		fmt.Printf("      Command: %s\n", stage.Command)
+		fmt.Printf("      Reason: %s\n", stage.Reason)
+	}
+
+	// Summary
+	wouldRun := 0
+	for _, stage := range report.Stages {
+		if stage.WouldRun {
+			wouldRun++
+		}
+	}
+	fmt.Printf("\n📊 Summary: %d/%d stages would run\n", wouldRun, len(report.Stages))
 }
