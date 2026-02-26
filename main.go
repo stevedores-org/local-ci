@@ -44,7 +44,7 @@ import (
 	"time"
 )
 
-var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
+var version = "0.5.0" // Profile support for dev/ci/agent contexts
 
 type Stage struct {
 	Name      string   `toml:"-"`
@@ -96,6 +96,7 @@ func main() {
 		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
 		flagRemote   = flag.String("remote", "", "Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)")
 		flagSession  = flag.String("session", "onion", "tmux session name for remote execution")
+		flagProfile  = flag.String("profile", "", "Use a named profile from .local-ci.toml (e.g., fast, ci, agent)")
 	)
 
 	flag.Usage = func() {
@@ -109,7 +110,8 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  local-ci              Run enabled stages for your project\n")
 		fmt.Fprintf(os.Stderr, "  local-ci test         Run only the test stage\n")
 		fmt.Fprintf(os.Stderr, "  local-ci --fix        Auto-fix format/lint issues\n")
-		fmt.Fprintf(os.Stderr, "  local-ci --list       List all available stages\n\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --list       List all available stages\n")
+		fmt.Fprintf(os.Stderr, "  local-ci --profile ci Run stages from the 'ci' profile\n\n")
 		fmt.Fprintf(os.Stderr, "Remote execution:\n")
 		fmt.Fprintf(os.Stderr, "  --remote HOST  Run stages on remote machine via SSH (e.g., aivcs@100.90.209.9)\n")
 		fmt.Fprintf(os.Stderr, "  --session NAME Use specific tmux session name (default: onion)\n\n")
@@ -153,6 +155,26 @@ func main() {
 		warnf("Workspace detection failed: %v", err)
 	}
 
+	// Apply profile overrides
+	var activeProfile *Profile
+	if *flagProfile != "" {
+		p, err := config.GetProfile(*flagProfile)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		activeProfile = p
+		// Profile flags override CLI defaults (but explicit CLI flags win)
+		if p.FailFast && !isFlagSet("fail-fast") {
+			*flagFailFast = true
+		}
+		if p.NoCache && !isFlagSet("no-cache") {
+			*flagNoCache = true
+		}
+		if p.JSON && !isFlagSet("json") {
+			*flagJSON = true
+		}
+	}
+
 	if *flagList {
 		fmt.Printf("Available stages:\n")
 		for name := range config.Stages {
@@ -177,9 +199,15 @@ func main() {
 		}
 	}
 
-	// If no stages specified, use enabled defaults
+	// If no stages specified, use profile stages or enabled defaults
 	if len(stages) == 0 {
-		for _, name := range config.GetEnabledStages() {
+		var stageNames []string
+		if activeProfile != nil {
+			stageNames = config.GetProfileStages(activeProfile)
+		} else {
+			stageNames = config.GetEnabledStages()
+		}
+		for _, name := range stageNames {
 			stages = append(stages, stageMap[name])
 		}
 	}
@@ -649,6 +677,17 @@ func updateGitignore(path string, entry string) error {
 	content += entry + "\n"
 
 	return os.WriteFile(path, []byte(content), 0644)
+}
+
+// isFlagSet returns true if the named flag was explicitly provided on the command line.
+func isFlagSet(name string) bool {
+	found := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == name {
+			found = true
+		}
+	})
+	return found
 }
 
 // Printing helpers
