@@ -1,0 +1,23 @@
+# Local CI configuration for local-ci (Go project)
+
+[project]
+name = "local-ci"
+kind = "go"
+
+[stages]
+
+[stages.fmt]
+run = "gofmt -l ."
+fix = "gofmt -w ."
+enabled = true
+
+[stages.vet]
+run = "go vet ./..."
+enabled = true
+
+[stages.test]
+run = "go test ./..."
+enabled = true
+
+[stage_order]
+stages = ["fmt", "vet", "test"]

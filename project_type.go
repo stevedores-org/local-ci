@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -9,12 +10,12 @@ import (
 type ProjectType string
 
 const (
-	ProjectTypeRust     ProjectType = "rust"
-	ProjectTypePython   ProjectType = "python"
-	ProjectTypeNode     ProjectType = "node"
-	ProjectTypeGo       ProjectType = "go"
-	ProjectTypeJava     ProjectType = "java"
-	ProjectTypeGeneric  ProjectType = "generic"
+	ProjectTypeRust    ProjectType = "rust"
+	ProjectTypePython  ProjectType = "python"
+	ProjectTypeNode    ProjectType = "node"
+	ProjectTypeGo      ProjectType = "go"
+	ProjectTypeJava    ProjectType = "java"
+	ProjectTypeGeneric ProjectType = "generic"
 )
 
 // DetectProjectType analyzes the project root and determines its type
@@ -68,40 +69,87 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 	}
 }
 
+// defaultTestCommand returns the appropriate test command for Rust
+// Prefers cargo-nextest if available, falls back to cargo test
+func defaultTestCommand() []string {
+	if _, err := exec.LookPath("cargo-nextest"); err == nil {
+		return []string{"cargo", "nextest", "run", "--workspace"}
+	}
+	return []string{"cargo", "test", "--workspace"}
+}
+
 // getRustStages returns Rust/Cargo specific stages
 func getRustStages() map[string]Stage {
 	return map[string]Stage{
 		"fmt": {
-			Name:    "fmt",
-			Cmd:     []string{"cargo", "fmt", "--all", "--", "--check"},
-			FixCmd:  []string{"cargo", "fmt", "--all"},
-			Check:   true,
-			Timeout: 120,
-			Enabled: true,
+			Name:      "fmt",
+			Cmd:       []string{"cargo", "fmt", "--all", "--", "--check"},
+			FixCmd:    []string{"cargo", "fmt", "--all"},
+			Check:     true,
+			Timeout:   120,
+			Enabled:   true,
+			DependsOn: []string{},
+			Watch:     []string{"*.rs"},
 		},
 		"clippy": {
-			Name:    "clippy",
-			Cmd:     []string{"cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: true,
+			Name:      "clippy",
+			Cmd:       []string{"cargo", "clippy", "--workspace", "--all-targets", "--", "-D", "warnings"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   true,
+			DependsOn: []string{"fmt"},
+			Watch:     []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"cargo", "test", "--workspace"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 1200,
-			Enabled: true,
+			Name:      "test",
+			Cmd:       defaultTestCommand(),
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   1200,
+			Enabled:   true,
+			DependsOn: []string{"fmt"},
+			Watch:     []string{"*.rs", "Cargo.toml", "Cargo.lock"},
 		},
 		"check": {
-			Name:    "check",
-			Cmd:     []string{"cargo", "check", "--workspace"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false,
+			Name:      "check",
+			Cmd:       []string{"cargo", "check", "--workspace"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.rs", "Cargo.toml", "Cargo.lock"},
+		},
+		"deny": {
+			Name:      "deny",
+			Cmd:       []string{"cargo", "deny", "check"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"Cargo.toml", "Cargo.lock", "deny.toml"},
+		},
+		"audit": {
+			Name:      "audit",
+			Cmd:       []string{"cargo", "audit"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"Cargo.toml", "Cargo.lock"},
+		},
+		"machete": {
+			Name:      "machete",
+			Cmd:       []string{"cargo", "machete"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.rs", "Cargo.toml"},
 		},
 	}
 }
@@ -110,28 +158,34 @@ func getRustStages() map[string]Stage {
 func getPythonStages() map[string]Stage {
 	return map[string]Stage{
 		"lint": {
-			Name:    "lint",
-			Cmd:     []string{"pylint", ".", "--errors-only"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false,
+			Name:      "lint",
+			Cmd:       []string{"pylint", ".", "--errors-only"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.py"},
 		},
 		"format": {
-			Name:    "format",
-			Cmd:     []string{"black", "--check", "."},
-			FixCmd:  []string{"black", "."},
-			Check:   true,
-			Timeout: 120,
-			Enabled: false,
+			Name:      "format",
+			Cmd:       []string{"black", "--check", "."},
+			FixCmd:    []string{"black", "."},
+			Check:     true,
+			Timeout:   120,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.py"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"pytest"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false,
+			Name:      "test",
+			Cmd:       []string{"pytest"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.py", "pyproject.toml"},
 		},
 	}
 }
@@ -140,28 +194,34 @@ func getPythonStages() map[string]Stage {
 func getNodeStages() map[string]Stage {
 	return map[string]Stage{
 		"lint": {
-			Name:    "lint",
-			Cmd:     []string{"npm", "run", "lint"},
-			FixCmd:  []string{"npm", "run", "lint", "--", "--fix"},
-			Check:   false,
-			Timeout: 300,
-			Enabled: false,
+			Name:      "lint",
+			Cmd:       []string{"npm", "run", "lint"},
+			FixCmd:    []string{"npm", "run", "lint", "--", "--fix"},
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"npm", "test"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false,
+			Name:      "test",
+			Cmd:       []string{"npm", "test"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 		"build": {
-			Name:    "build",
-			Cmd:     []string{"npm", "run", "build"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false,
+			Name:      "build",
+			Cmd:       []string{"npm", "run", "build"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 	}
 }
@@ -170,28 +230,34 @@ func getNodeStages() map[string]Stage {
 func getGoStages() map[string]Stage {
 	return map[string]Stage{
 		"fmt": {
-			Name:    "fmt",
-			Cmd:     []string{"go", "fmt", "./..."},
-			FixCmd:  []string{"go", "fmt", "./..."},
-			Check:   true,
-			Timeout: 120,
-			Enabled: false,
+			Name:      "fmt",
+			Cmd:       []string{"go", "fmt", "./..."},
+			FixCmd:    []string{"go", "fmt", "./..."},
+			Check:     true,
+			Timeout:   120,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.go"},
 		},
 		"vet": {
-			Name:    "vet",
-			Cmd:     []string{"go", "vet", "./..."},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 300,
-			Enabled: false,
+			Name:      "vet",
+			Cmd:       []string{"go", "vet", "./..."},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.go", "go.mod", "go.sum"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"go", "test", "./..."},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false,
+			Name:      "test",
+			Cmd:       []string{"go", "test", "./..."},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.go", "go.mod", "go.sum"},
 		},
 	}
 }
@@ -200,20 +266,24 @@ func getGoStages() map[string]Stage {
 func getJavaStages() map[string]Stage {
 	return map[string]Stage{
 		"build": {
-			Name:    "build",
-			Cmd:     []string{"mvn", "clean", "compile"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: false,
+			Name:      "build",
+			Cmd:       []string{"mvn", "clean", "compile"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.java", "pom.xml"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"mvn", "test"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 900,
-			Enabled: false,
+			Name:      "test",
+			Cmd:       []string{"mvn", "test"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   900,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{"*.java", "pom.xml"},
 		},
 	}
 }
@@ -222,12 +292,14 @@ func getJavaStages() map[string]Stage {
 func getGenericStages() map[string]Stage {
 	return map[string]Stage{
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"echo", "Please configure stages in .local-ci.toml"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 60,
-			Enabled: false,
+			Name:      "test",
+			Cmd:       []string{"echo", "Please configure stages in .local-ci.toml"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   60,
+			Enabled:   false,
+			DependsOn: []string{},
+			Watch:     []string{},
 		},
 	}
 }
