@@ -21,7 +21,7 @@ type mcpContext struct {
 }
 
 func cmdServe(root string) error {
-	config, err := LoadConfig(root)
+	config, err := LoadConfig(root, false)
 	if err != nil {
 		return fmt.Errorf("failed to load config: %w", err)
 	}

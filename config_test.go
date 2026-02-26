@@ -94,7 +94,7 @@ func TestLoadConfigMalformedTOML(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"x\"\n"), 0644)
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte("this is not valid toml {{{}}}"), 0644)
 
-	_, err := LoadConfig(dir)
+	_, err := LoadConfig(dir, false)
 	if err == nil {
 		t.Error("expected error for malformed TOML config")
 	}
@@ -112,7 +112,7 @@ enabled = true
 `
 	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte(configContent), 0644)
 
-	config, err := LoadConfig(dir)
+	config, err := LoadConfig(dir, false)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -147,6 +147,150 @@ func TestSaveDefaultConfigDoesNotOverwrite(t *testing.T) {
 	data, _ := os.ReadFile(configPath)
 	if string(data) != existing {
 		t.Error("existing config should not be overwritten")
+	}
+}
+
+func TestGetProfileReturnsProfile(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"fmt":    {Name: "fmt", Enabled: true},
+			"clippy": {Name: "clippy", Enabled: true},
+			"test":   {Name: "test", Enabled: true},
+		},
+		Profiles: map[string]Profile{
+			"fast": {Stages: []string{"fmt", "clippy"}, FailFast: true},
+			"ci":   {Stages: []string{"fmt", "clippy", "test"}, NoCache: true},
+		},
+	}
+
+	p, err := config.GetProfile("fast")
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if len(p.Stages) != 2 {
+		t.Errorf("expected 2 stages, got %d", len(p.Stages))
+	}
+	if !p.FailFast {
+		t.Error("expected FailFast to be true")
+	}
+}
+
+func TestGetProfileUnknown(t *testing.T) {
+	config := &Config{
+		Stages:   map[string]Stage{},
+		Profiles: map[string]Profile{},
+	}
+
+	_, err := config.GetProfile("nope")
+	if err == nil {
+		t.Fatal("expected error for unknown profile")
+	}
+}
+
+func TestGetProfileReferencesUnknownStage(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"fmt": {Name: "fmt", Enabled: true},
+		},
+		Profiles: map[string]Profile{
+			"bad": {Stages: []string{"fmt", "nonexistent"}},
+		},
+	}
+
+	_, err := config.GetProfile("bad")
+	if err == nil {
+		t.Fatal("expected error for profile referencing unknown stage")
+	}
+}
+
+func TestGetProfileStagesOrder(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"test":   {Name: "test", Enabled: true},
+			"fmt":    {Name: "fmt", Enabled: true},
+			"clippy": {Name: "clippy", Enabled: true},
+		},
+		Profiles: map[string]Profile{},
+	}
+
+	p := &Profile{Stages: []string{"test", "clippy", "fmt"}}
+	ordered := config.GetProfileStages(p)
+
+	// Should be sorted by priority: fmt(0) < clippy(1) < test(3)
+	expected := []string{"fmt", "clippy", "test"}
+	for i, name := range expected {
+		if ordered[i] != name {
+			t.Errorf("position %d: expected %q, got %q (full: %v)", i, name, ordered[i], ordered)
+		}
+	}
+}
+
+func TestGetProfileStagesEmptyFallsBackToEnabled(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"fmt":  {Name: "fmt", Enabled: true},
+			"test": {Name: "test", Enabled: true},
+			"deny": {Name: "deny", Enabled: false},
+		},
+		Profiles: map[string]Profile{},
+	}
+
+	p := &Profile{Stages: []string{}}
+	ordered := config.GetProfileStages(p)
+	if len(ordered) != 2 {
+		t.Errorf("expected 2 enabled stages, got %d: %v", len(ordered), ordered)
+	}
+}
+
+func TestLoadConfigWithProfiles(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "Cargo.toml"), []byte("[package]\nname = \"x\"\n"), 0644)
+
+	configContent := `[stages.fmt]
+command = ["cargo", "fmt"]
+enabled = true
+
+[stages.test]
+command = ["cargo", "test"]
+enabled = true
+
+[profiles.fast]
+stages = ["fmt"]
+fail_fast = true
+
+[profiles.ci]
+stages = ["fmt", "test"]
+no_cache = true
+
+[profiles.agent]
+stages = ["fmt", "test"]
+json = true
+fail_fast = true
+`
+	os.WriteFile(filepath.Join(dir, ".local-ci.toml"), []byte(configContent), 0644)
+
+	config, err := LoadConfig(dir, false)
+	if err != nil {
+		t.Fatalf("LoadConfig failed: %v", err)
+	}
+
+	if len(config.Profiles) != 3 {
+		t.Errorf("expected 3 profiles, got %d", len(config.Profiles))
+	}
+
+	fast := config.Profiles["fast"]
+	if !fast.FailFast {
+		t.Error("fast profile should have fail_fast=true")
+	}
+
+	ci := config.Profiles["ci"]
+	if !ci.NoCache {
+		t.Error("ci profile should have no_cache=true")
+	}
+
+	agent := config.Profiles["agent"]
+	if !agent.JSON || !agent.FailFast {
+		t.Error("agent profile should have json=true and fail_fast=true")
 	}
 }
 

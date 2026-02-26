@@ -13,7 +13,7 @@ func TestSelectStagesFromConfig(t *testing.T) {
 	dir := createTestWorkspace(t)
 	defer os.RemoveAll(dir)
 
-	config, err := LoadConfig(dir)
+	config, err := LoadConfig(dir, false)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -38,7 +38,7 @@ func TestSelectStagesUnknown(t *testing.T) {
 	dir := createTestWorkspace(t)
 	defer os.RemoveAll(dir)
 
-	config, err := LoadConfig(dir)
+	config, err := LoadConfig(dir, false)
 	if err != nil {
 		t.Fatalf("LoadConfig failed: %v", err)
 	}
@@ -82,7 +82,7 @@ func TestComputeSourceHashIgnoresTarget(t *testing.T) {
 		t.Fatalf("write target failed: %v", err)
 	}
 
-	config, _ := LoadConfig(dir)
+	config, _ := LoadConfig(dir, false)
 	ws, _ := DetectWorkspace(dir)
 
 	h1, err := computeSourceHash(dir, config, ws)

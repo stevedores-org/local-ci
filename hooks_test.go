@@ -79,7 +79,7 @@ func TestRemovePreCommitHookFullRemoval(t *testing.T) {
 
 	// Write the exact template
 	hookPath := filepath.Join(dir, ".git", "hooks", "pre-commit")
-	os.WriteFile(hookPath, []byte(preCommitHookTemplate), 0755)
+	os.WriteFile(hookPath, []byte(getPreCommitHookTemplate(dir)), 0755)
 
 	err := RemovePreCommitHook(dir)
 	if err != nil {
