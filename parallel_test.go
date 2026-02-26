@@ -273,10 +273,10 @@ func TestParallelRunnerCacheHit(t *testing.T) {
 	}
 
 	pr := &ParallelRunner{
-		Stages:     stages,
-		Cwd:        dir,
-		NoCache:    false,
-		Cache:      cache,
+		Stages:      stages,
+		Cwd:         dir,
+		NoCache:     false,
+		Cache:       cache,
 		StageHashes: map[string]string{"cached": "hash123"},
 	}
 

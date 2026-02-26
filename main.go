@@ -54,7 +54,7 @@ type Stage struct {
 	Timeout   int      `toml:"timeout"`     // in seconds
 	Enabled   bool     `toml:"enabled"`
 	DependsOn string   `toml:"depends_on"` // stage that must complete before this one
-	Watch     []string `toml:"watch"`       // file patterns this stage cares about (defaults to cache.include_patterns)
+	Watch     []string `toml:"watch"`      // file patterns this stage cares about (defaults to cache.include_patterns)
 }
 
 type Result struct {
