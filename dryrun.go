@@ -9,10 +9,10 @@ import (
 
 // DryRunStage represents a single stage in dry-run output
 type DryRunStage struct {
-	Name      string `json:"name"`
-	Command   string `json:"command"`
-	WouldRun  bool   `json:"would_run"`
-	Reason    string `json:"reason"` // "cached", "hash_changed", "disabled", "no_cache_flag"
+	Name     string `json:"name"`
+	Command  string `json:"command"`
+	WouldRun bool   `json:"would_run"`
+	Reason   string `json:"reason"` // "cached", "hash_changed", "disabled", "no_cache_flag"
 }
 
 // DryRunReport represents the overall dry-run output
