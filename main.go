@@ -49,11 +49,11 @@ var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java
 type Stage struct {
 	Name      string   `toml:"-"`
 	Cmd       []string `toml:"command"`
-	FixCmd    []string `toml:"fix_command"`  // command to run with --fix flag
-	Check     bool     `toml:"check"`        // true if this is a --check command
-	Timeout   int      `toml:"timeout"`      // in seconds
+	FixCmd    []string `toml:"fix_command"` // command to run with --fix flag
+	Check     bool     `toml:"check"`       // true if this is a --check command
+	Timeout   int      `toml:"timeout"`     // in seconds
 	Enabled   bool     `toml:"enabled"`
-	DependsOn []string `toml:"depends_on"`   // stages that must complete before this one
+	DependsOn []string `toml:"depends_on"` // stages that must complete before this one
 }
 
 type Result struct {
