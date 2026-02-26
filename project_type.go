@@ -361,7 +361,7 @@ enabled = false
 command = ["pytest"]
 timeout = 600
 enabled = false
-watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
+watch = ["*.py", "*.toml", "*.txt"]
 
 [dependencies]
 optional = []
@@ -394,7 +394,7 @@ enabled = false
 command = ["npm", "run", "build"]
 timeout = 600
 enabled = false
-watch = ["*.rs", "Cargo.toml", "Cargo.lock"]
+watch = ["*.js", "*.ts", "*.json"]
 
 [dependencies]
 optional = []

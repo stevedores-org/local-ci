@@ -173,7 +173,7 @@ func TestParallelRunnerExecutesStages(t *testing.T) {
 		Cwd:         dir,
 		NoCache:     true,
 		Cache:       make(map[string]string),
-		StageHashes: map[string]string{"echo-stage": "testhash"},
+		StageHashes: map[string]string{"s1": "testhash", "s2": "testhash"},
 	}
 
 	results, err := pr.RunParallel()
@@ -209,7 +209,7 @@ func TestParallelRunnerRespectsDepOrder(t *testing.T) {
 		Cwd:         dir,
 		NoCache:     true,
 		Cache:       make(map[string]string),
-		StageHashes: map[string]string{"echo-stage": "testhash"},
+		StageHashes: map[string]string{"s1": "testhash", "s2": "testhash"},
 	}
 
 	results, err := pr.RunParallel()
@@ -243,7 +243,7 @@ func TestParallelRunnerFailFast(t *testing.T) {
 		Cwd:         dir,
 		NoCache:     true,
 		Cache:       make(map[string]string),
-		StageHashes: map[string]string{"echo-stage": "testhash"},
+		StageHashes: map[string]string{"fail-first": "testhash", "should-skip": "testhash"},
 		FailFast:    true,
 	}
 
@@ -313,7 +313,7 @@ func TestParallelRunnerConcurrencyLimit(t *testing.T) {
 		Cwd:         dir,
 		NoCache:     true,
 		Cache:       make(map[string]string),
-		StageHashes: map[string]string{"echo-stage": "testhash"},
+		StageHashes: map[string]string{"s1": "testhash", "s2": "testhash", "s3": "testhash", "s4": "testhash"},
 	}
 
 	results, err := pr.RunParallel()

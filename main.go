@@ -594,10 +594,12 @@ func computeStageHash(root string, config *Config, ws *Workspace, patterns []str
 		}
 
 		if matchesPatterns(d.Name(), patterns) {
+			relPath, _ := filepath.Rel(root, path)
 			data, err := os.ReadFile(path)
 			if err != nil {
 				return nil // Skip unreadable files
 			}
+			h.Write([]byte(relPath))
 			h.Write(data)
 		}
 

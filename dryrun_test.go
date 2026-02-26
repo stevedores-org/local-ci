@@ -114,6 +114,19 @@ func TestBuildDryRunReportDisabledStages(t *testing.T) {
 	if report.Disabled != 2 {
 		t.Errorf("expected 2 disabled, got %d", report.Disabled)
 	}
+
+	disabledCount := 0
+	for _, s := range report.Stages {
+		if s.Reason == "disabled" {
+			disabledCount++
+			if s.WouldRun {
+				t.Errorf("disabled stage %q should not run", s.Name)
+			}
+		}
+	}
+	if disabledCount != 2 {
+		t.Errorf("expected 2 disabled stages in report, got %d", disabledCount)
+	}
 }
 
 func TestBuildDryRunReportMixedStates(t *testing.T) {
@@ -148,6 +161,21 @@ func TestBuildDryRunReportMixedStates(t *testing.T) {
 	}
 	if report.Disabled != 1 {
 		t.Errorf("expected 1 disabled, got %d", report.Disabled)
+	}
+	if len(report.Stages) != 3 {
+		t.Errorf("expected 3 total stages, got %d", len(report.Stages))
+	}
+}
+
+func TestBuildDryRunReportWorkspaceAndStageHashes(t *testing.T) {
+	stageHashes := map[string]string{"fmt": "abc123"}
+	report := BuildDryRunReport("/home/user/project", stageHashes, nil, nil, nil, false)
+
+	if report.Workspace != "/home/user/project" {
+		t.Errorf("expected workspace '/home/user/project', got %q", report.Workspace)
+	}
+	if report.StageHashes["fmt"] != "abc123" {
+		t.Errorf("expected stage hash 'abc123' for fmt, got %q", report.StageHashes["fmt"])
 	}
 }
 
