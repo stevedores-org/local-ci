@@ -28,12 +28,21 @@ var stagePriority = map[string]int{
 	"build":     5,
 }
 
+// Profile defines a named set of overrides for stage selection and flags.
+type Profile struct {
+	Stages   []string `toml:"stages"`
+	FailFast bool     `toml:"fail_fast"`
+	NoCache  bool     `toml:"no_cache"`
+	JSON     bool     `toml:"json"`
+}
+
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache        CacheConfig      `toml:"cache"`
-	Stages       map[string]Stage `toml:"stages"`
-	Dependencies DepsConfig       `toml:"dependencies"`
-	Workspace    WorkspaceConfig  `toml:"workspace"`
+	Cache        CacheConfig        `toml:"cache"`
+	Stages       map[string]Stage   `toml:"stages"`
+	Profiles     map[string]Profile `toml:"profiles"`
+	Dependencies DepsConfig         `toml:"dependencies"`
+	Workspace    WorkspaceConfig    `toml:"workspace"`
 }
 
 // CacheConfig defines caching behavior
@@ -69,7 +78,8 @@ func LoadConfig(root string) (*Config, error) {
 			SkipDirs:        skipDirs,
 			IncludePatterns: cachePatterns,
 		},
-		Stages: defaultStages,
+		Stages:   defaultStages,
+		Profiles: map[string]Profile{},
 		Dependencies: DepsConfig{
 			Required: []string{},
 			Optional: []string{},
@@ -205,6 +215,51 @@ func defaultStages() map[string]Stage {
 			Enabled: false, // Requires taplo to be installed
 		},
 	}
+}
+
+// GetProfile returns the named profile or an error if it doesn't exist.
+func (c *Config) GetProfile(name string) (*Profile, error) {
+	p, ok := c.Profiles[name]
+	if !ok {
+		available := make([]string, 0, len(c.Profiles))
+		for k := range c.Profiles {
+			available = append(available, k)
+		}
+		sort.Strings(available)
+		return nil, fmt.Errorf("unknown profile %q (available: %v)", name, available)
+	}
+	// Validate that all referenced stages exist
+	for _, s := range p.Stages {
+		if _, ok := c.Stages[s]; !ok {
+			return nil, fmt.Errorf("profile %q references unknown stage %q", name, s)
+		}
+	}
+	return &p, nil
+}
+
+// GetProfileStages returns the stages for a profile in priority order.
+func (c *Config) GetProfileStages(profile *Profile) []string {
+	if len(profile.Stages) == 0 {
+		return c.GetEnabledStages()
+	}
+	// Return profile stages in canonical priority order
+	stages := make([]string, len(profile.Stages))
+	copy(stages, profile.Stages)
+	sort.Slice(stages, func(i, j int) bool {
+		pi, oki := stagePriority[stages[i]]
+		pj, okj := stagePriority[stages[j]]
+		if oki && okj {
+			return pi < pj
+		}
+		if oki {
+			return true
+		}
+		if okj {
+			return false
+		}
+		return stages[i] < stages[j]
+	})
+	return stages
 }
 
 // GetTimeout returns the timeout for a stage, with fallback to default
