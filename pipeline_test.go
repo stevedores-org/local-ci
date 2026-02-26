@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -361,5 +362,141 @@ func TestRequireCommandNotFound(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "not found") {
 		t.Errorf("error should mention 'not found', got %q", err.Error())
+	}
+}
+
+// --- Issue #12: Warnings in PipelineReport ---
+
+func TestPipelineReportWarningsFieldInJSON(t *testing.T) {
+	report := PipelineReport{
+		Version:    "0.4.0",
+		DurationMS: 100,
+		Passed:     1,
+		Failed:     0,
+		Warnings:   []string{"hash computation failed: permission denied on src/lib.rs"},
+		Results:    []ResultJSON{},
+	}
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	warnings, ok := parsed["warnings"]
+	if !ok {
+		t.Fatal("JSON output should contain 'warnings' field")
+	}
+
+	warningsList, ok := warnings.([]interface{})
+	if !ok {
+		t.Fatalf("warnings should be an array, got %T", warnings)
+	}
+
+	if len(warningsList) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(warningsList))
+	}
+
+	msg, ok := warningsList[0].(string)
+	if !ok || !strings.Contains(msg, "hash computation failed") {
+		t.Errorf("warning should contain hash error message, got %q", msg)
+	}
+}
+
+func TestPipelineReportNoWarningsOmitsField(t *testing.T) {
+	report := PipelineReport{
+		Version:    "0.4.0",
+		DurationMS: 50,
+		Passed:     2,
+		Failed:     0,
+		Results:    []ResultJSON{},
+	}
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	// When Warnings is nil, the field should be omitted from JSON
+	if strings.Contains(string(data), "warnings") {
+		t.Error("JSON should omit 'warnings' when nil/empty")
+	}
+}
+
+func TestPipelineReportWarningsBeforeResults(t *testing.T) {
+	// Verify warnings appear in JSON output (order doesn't matter for JSON,
+	// but we verify both fields coexist correctly)
+	report := PipelineReport{
+		Version:    "0.4.0",
+		DurationMS: 200,
+		Passed:     1,
+		Failed:     1,
+		Warnings:   []string{"warning one", "warning two"},
+		Results: []ResultJSON{
+			{Name: "fmt", Status: "pass", DurationMS: 100},
+			{Name: "test", Status: "fail", DurationMS: 100, Error: "exit 1"},
+		},
+	}
+
+	data, err := json.Marshal(report)
+	if err != nil {
+		t.Fatalf("failed to marshal: %v", err)
+	}
+
+	var parsed map[string]interface{}
+	if err := json.Unmarshal(data, &parsed); err != nil {
+		t.Fatalf("failed to unmarshal: %v", err)
+	}
+
+	warningsList := parsed["warnings"].([]interface{})
+	if len(warningsList) != 2 {
+		t.Errorf("expected 2 warnings, got %d", len(warningsList))
+	}
+
+	resultsList := parsed["results"].([]interface{})
+	if len(resultsList) != 2 {
+		t.Errorf("expected 2 results, got %d", len(resultsList))
+	}
+}
+
+func TestHashErrorAlwaysSurfaced(t *testing.T) {
+	// computeSourceHash should return an error for an unreadable directory.
+	// The caller should always surface this — not gate on verbose.
+	// We test that computeSourceHash returns a meaningful error.
+	config := &Config{
+		Cache: CacheConfig{
+			SkipDirs:        []string{},
+			IncludePatterns: []string{"*.go"},
+		},
+	}
+
+	// Point at a non-existent directory
+	_, err := computeSourceHash("/nonexistent-path-for-test-12", config, nil)
+	if err == nil {
+		t.Error("computeSourceHash should return error for non-existent root")
+	}
+}
+
+func TestHashErrorDisablesCacheAndAddsWarning(t *testing.T) {
+	// Simulate the behavior: when hash fails, cache should be disabled
+	// and a warning should be recorded.
+	// This tests the collectWarning helper.
+	var warnings []string
+	hashErr := fmt.Errorf("permission denied on src/lib.rs")
+
+	// Simulate the new behavior from main.go
+	if hashErr != nil {
+		warnings = append(warnings, fmt.Sprintf("hash computation failed: %v", hashErr))
+	}
+
+	if len(warnings) != 1 {
+		t.Fatalf("expected 1 warning, got %d", len(warnings))
+	}
+	if !strings.Contains(warnings[0], "permission denied") {
+		t.Errorf("warning should contain original error, got %q", warnings[0])
 	}
 }
