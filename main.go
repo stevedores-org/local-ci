@@ -445,6 +445,39 @@ func main() {
 	}
 }
 
+// matchesPatterns checks if a filename matches any of the given patterns
+func matchesPatterns(filename string, patterns []string) bool {
+	for _, pattern := range patterns {
+		// Simple pattern matching: *.rs, *.toml
+		if strings.HasPrefix(pattern, "*.") {
+			ext := pattern[1:] // Get .rs or .toml
+			if strings.HasSuffix(filename, ext) {
+				return true
+			}
+		} else if pattern == "*" {
+			// Match all files
+			return true
+		} else if filename == pattern {
+			// Exact filename match
+			return true
+		}
+	}
+	return false
+}
+
+// computeStageHashes computes hashes for multiple stages in one pass
+func computeStageHashes(root string, config *Config, ws *Workspace, stages []Stage) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, stage := range stages {
+		hash, err := computeStageHash(stage, root, config, ws)
+		if err != nil {
+			return nil, err
+		}
+		result[stage.Name] = hash
+	}
+	return result, nil
+}
+
 // computeSourceHash computes MD5 hash of Rust source files
 func computeSourceHash(root string, config *Config, ws *Workspace) (string, error) {
 	h := md5.New()

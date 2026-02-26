@@ -17,6 +17,7 @@ type ParallelRunner struct {
 	NoCache     bool
 	Cache       map[string]string
 	SourceHash  string
+	StageHashes map[string]string // Per-stage hashes for cache validation
 	Verbose     bool
 	JSON        bool
 	FailFast    bool
