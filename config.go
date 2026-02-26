@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -291,16 +292,63 @@ func (c *Config) GetEnabledStages() []string {
 		}
 	}
 
-	// Then add any remaining enabled stages not in the predefined order
+	// Then add any remaining enabled stages not in the predefined order, sorted alphabetically
 	seen := make(map[string]bool)
 	for _, name := range order {
 		seen[name] = true
 	}
+	var extra []string
 	for name, stage := range c.Stages {
 		if !seen[name] && stage.Enabled {
-			enabled = append(enabled, name)
+			extra = append(extra, name)
 		}
 	}
+	sort.Strings(extra)
+	enabled = append(enabled, extra...)
 
 	return enabled
+}
+
+// GetProfile returns a profile by name, validating that all referenced stages exist.
+func (c *Config) GetProfile(name string) (*Profile, error) {
+	p, ok := c.Profiles[name]
+	if !ok {
+		return nil, fmt.Errorf("profile %q not found", name)
+	}
+	for _, stageName := range p.Stages {
+		if _, exists := c.Stages[stageName]; !exists {
+			return nil, fmt.Errorf("profile %q references unknown stage %q", name, stageName)
+		}
+	}
+	return &p, nil
+}
+
+// GetProfileStages returns the stages for a profile in deterministic order.
+// If the profile has no stages, falls back to enabled stages.
+func (c *Config) GetProfileStages(p *Profile) []string {
+	if len(p.Stages) == 0 {
+		return c.GetEnabledStages()
+	}
+
+	// Use the same ordering as GetEnabledStages
+	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+	inProfile := make(map[string]bool)
+	for _, s := range p.Stages {
+		inProfile[s] = true
+	}
+
+	var result []string
+	seen := make(map[string]bool)
+	for _, name := range order {
+		if inProfile[name] {
+			result = append(result, name)
+			seen[name] = true
+		}
+	}
+	for _, name := range p.Stages {
+		if !seen[name] {
+			result = append(result, name)
+		}
+	}
+	return result
 }

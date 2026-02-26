@@ -101,22 +101,38 @@ func RemovePreCommitHook(root string) error {
 
 	content := string(data)
 
-	// If hook only contains local-ci, remove the file
-	if strings.Contains(content, "local-ci pre-commit hook") && !strings.Contains(content, "local-ci") {
-		return os.Remove(preCommitPath)
+	// If hook only contains local-ci content, remove the file entirely
+	if strings.Contains(content, "local-ci pre-commit hook") {
+		// Check if there's anything besides the local-ci section
+		lines := strings.Split(content, "\n")
+		var nonLocalCI []string
+		inLocalCI := false
+		for _, line := range lines {
+			if strings.Contains(line, "local-ci pre-commit hook") {
+				inLocalCI = true
+				continue
+			}
+			if inLocalCI {
+				// Still in local-ci section until we see another shebang or end
+				continue
+			}
+			trimmed := strings.TrimSpace(line)
+			if trimmed != "" && trimmed != "#!/bin/bash" {
+				nonLocalCI = append(nonLocalCI, line)
+			}
+		}
+		if len(nonLocalCI) == 0 {
+			return os.Remove(preCommitPath)
+		}
 	}
 
-	// Otherwise, remove local-ci section
+	// Otherwise, remove local-ci section and keep the rest
 	lines := strings.Split(content, "\n")
 	var filtered []string
 	skip := false
 	for _, line := range lines {
 		if strings.Contains(line, "local-ci pre-commit hook") {
 			skip = true
-		}
-		if skip && strings.HasPrefix(line, "#!/bin/bash") && line != lines[0] {
-			// End of local-ci section
-			skip = false
 			continue
 		}
 		if !skip {

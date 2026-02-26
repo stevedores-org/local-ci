@@ -36,6 +36,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -55,11 +56,43 @@ type Stage struct {
 
 type Result struct {
 	Name     string
+	Command  string
 	Status   string
 	Duration time.Duration
 	Output   string
 	CacheHit bool
 	Error    error
+}
+
+// ResultJSON is the JSON-serializable form of Result.
+type ResultJSON struct {
+	Name       string `json:"name"`
+	Command    string `json:"command"`
+	Status     string `json:"status"`
+	DurationMS int64  `json:"duration_ms"`
+	CacheHit   bool   `json:"cache_hit"`
+	Output     string `json:"output,omitempty"`
+	Error      string `json:"error,omitempty"`
+}
+
+// toJSONResults converts a slice of Result to a slice of ResultJSON.
+func toJSONResults(results []Result) []ResultJSON {
+	out := make([]ResultJSON, 0, len(results))
+	for _, r := range results {
+		jr := ResultJSON{
+			Name:       r.Name,
+			Command:    r.Command,
+			Status:     r.Status,
+			DurationMS: r.Duration.Milliseconds(),
+			CacheHit:   r.CacheHit,
+			Output:     strings.TrimSpace(r.Output),
+		}
+		if r.Error != nil {
+			jr.Error = r.Error.Error()
+		}
+		out = append(out, jr)
+	}
+	return out
 }
 
 func main() {
@@ -113,7 +146,9 @@ func main() {
 			cmdInit(cwd)
 			return
 		} else if args[0] == "serve" {
-			cmdServe(cwd)
+			if err := cmdServe(cwd); err != nil {
+				fatalf("MCP server error: %v", err)
+			}
 			return
 		}
 	}
@@ -394,7 +429,7 @@ func main() {
 	printf("  Total time: %dms\n", totalDuration.Milliseconds())
 
 	// Show missing tools (optional)
-	missingTools := GetMissingToolsWithHints()
+	missingTools := GetMissingToolsWithHints(DetectProjectKind(cwd))
 	if len(missingTools) > 0 {
 		printf("%s", FormatMissingToolsMessage(missingTools))
 	}
@@ -576,9 +611,15 @@ func loadCache(root string) (map[string]string, error) {
 
 // saveCache saves the cache to .local-ci-cache
 func saveCache(cache map[string]string, root string) error {
+	keys := make([]string, 0, len(cache))
+	for stage := range cache {
+		keys = append(keys, stage)
+	}
+	sort.Strings(keys)
+
 	var lines []string
-	for stage, hash := range cache {
-		lines = append(lines, fmt.Sprintf("%s:%s", stage, hash))
+	for _, stage := range keys {
+		lines = append(lines, fmt.Sprintf("%s:%s", stage, cache[stage]))
 	}
 
 	cachePath := filepath.Join(root, ".local-ci-cache")
@@ -680,4 +721,25 @@ func warnf(format string, args ...interface{}) {
 func fatalf(format string, args ...interface{}) {
 	errorf(format+"\n", args...)
 	os.Exit(1)
+}
+
+// requireCommand checks if a command is available in PATH
+func requireCommand(name string) error {
+	if _, err := exec.LookPath(name); err != nil {
+		return fmt.Errorf("%q not found in PATH", name)
+	}
+	return nil
+}
+
+// validateStageCommands checks that all stage commands are available
+func validateStageCommands(stages []Stage) error {
+	for _, s := range stages {
+		if len(s.Cmd) == 0 {
+			return fmt.Errorf("stage %q has empty command", s.Name)
+		}
+		if err := requireCommand(s.Cmd[0]); err != nil {
+			return fmt.Errorf("stage %q requires %q: %w", s.Name, s.Cmd[0], err)
+		}
+	}
+	return nil
 }

@@ -260,7 +260,7 @@ func TestComputeSourceHashWithExclusion(t *testing.T) {
 	os.MkdirAll(excludedDir, 0755)
 	os.WriteFile(filepath.Join(excludedDir, "mod.rs"), []byte("fn y() {}"), 0644)
 
-	config, _ := LoadConfig(dir)
+	config, _ := LoadConfig(dir, false)
 	ws := &Workspace{
 		Root:     dir,
 		IsSingle: false,
@@ -325,7 +325,7 @@ func TestUpdateGitignoreAppendsNewline(t *testing.T) {
 // --- Stage selection ---
 
 func TestAllFlagEnablesDisabledStages(t *testing.T) {
-	config, _ := LoadConfig(t.TempDir())
+	config, _ := LoadConfig(t.TempDir(), false)
 
 	// Simulate --all behavior
 	var allStages []Stage

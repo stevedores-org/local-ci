@@ -72,10 +72,21 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 // defaultTestCommand returns the appropriate test command for Rust
 // Prefers cargo-nextest if available, falls back to cargo test
 func defaultTestCommand() []string {
-	if _, err := exec.LookPath("cargo-nextest"); err == nil {
+	if hasCargoNextest() {
 		return []string{"cargo", "nextest", "run", "--workspace"}
 	}
 	return []string{"cargo", "test", "--workspace"}
+}
+
+// defaultRustTestCommand is an alias for defaultTestCommand (used in tests)
+func defaultRustTestCommand() []string {
+	return defaultTestCommand()
+}
+
+// hasCargoNextest checks if cargo-nextest is installed
+func hasCargoNextest() bool {
+	_, err := exec.LookPath("cargo-nextest")
+	return err == nil
 }
 
 // getRustStages returns Rust/Cargo specific stages
