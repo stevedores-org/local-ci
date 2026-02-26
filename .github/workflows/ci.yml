@@ -40,3 +40,20 @@ jobs:
 
       - name: Run Tests
         run: go test -v ./...
+
+  nix-checks:
+    name: Nix Flake Check
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Nix + Cache
+        uses: stevedores-org/nix-cache/.github/actions/setup@develop
+        with:
+          push: ${{ github.event_name == 'push' }}
+          cache-auth-token: ${{ secrets.CACHE_AUTH_TOKEN }}
+          signing-secret-key: ${{ secrets.NIX_SIGNING_SECRET_KEY }}
+
+      - name: Nix flake check
+        run: nix flake check --print-build-logs
