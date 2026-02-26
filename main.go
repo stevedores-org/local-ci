@@ -36,6 +36,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 )
@@ -55,6 +56,7 @@ type Stage struct {
 
 type Result struct {
 	Name     string
+	Command  string
 	Status   string
 	Duration time.Duration
 	Output   string
