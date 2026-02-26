@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 )
 
@@ -68,6 +69,22 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 	}
 }
 
+// hasCargoNextest checks if cargo-nextest is available in PATH.
+func hasCargoNextest() bool {
+	_, err := exec.LookPath("cargo-nextest")
+	return err == nil
+}
+
+// defaultRustTestCommand returns the preferred test command for Rust projects.
+// Uses cargo-nextest when available for parallel execution and structured output,
+// falls back to cargo test otherwise.
+func defaultRustTestCommand() []string {
+	if hasCargoNextest() {
+		return []string{"cargo", "nextest", "run", "--workspace"}
+	}
+	return []string{"cargo", "test", "--workspace"}
+}
+
 // getRustStages returns Rust/Cargo specific stages
 func getRustStages() map[string]Stage {
 	return map[string]Stage{
@@ -89,7 +106,7 @@ func getRustStages() map[string]Stage {
 		},
 		"test": {
 			Name:    "test",
-			Cmd:     []string{"cargo", "test", "--workspace"},
+			Cmd:     defaultRustTestCommand(),
 			FixCmd:  nil,
 			Check:   false,
 			Timeout: 1200,
