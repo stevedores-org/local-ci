@@ -248,6 +248,11 @@ func main() {
 		}
 	}
 
+	// Validate that all stages have non-empty commands
+	if err := validateStageCommands(stages); err != nil {
+		fatalf("Invalid stage configuration: %v", err)
+	}
+
 	// Compute source hash
 	sourceHash, err := computeSourceHash(cwd, config, ws)
 	if err != nil {
@@ -264,9 +269,23 @@ func main() {
 		cache = make(map[string]string)
 	}
 
+	// Compute per-stage hashes for all stages
+	stageHashes := make(map[string]string)
+	for _, stage := range stages {
+		stageHash := sourceHash
+		if len(stage.Watch) > 0 {
+			var err error
+			stageHash, err = computeStageHash(stage, cwd, config, ws)
+			if err != nil && *flagVerbose {
+				warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+			}
+		}
+		stageHashes[stage.Name] = stageHash
+	}
+
 	// Handle dry-run mode
 	if *flagDryRun {
-		report := BuildDryRunReport(stages, cache, sourceHash, *flagNoCache)
+		report := BuildDryRunReport(stages, cache, sourceHash, stageHashes, *flagNoCache)
 		if *flagJSON {
 			PrintDryRunJSON(report)
 		} else {
@@ -288,6 +307,7 @@ func main() {
 			NoCache:     *flagNoCache,
 			Cache:       cache,
 			SourceHash:  sourceHash,
+			StageHashes: stageHashes,
 			Verbose:     *flagVerbose,
 			JSON:        *flagJSON,
 			FailFast:    *flagFailFast,
@@ -583,6 +603,39 @@ func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (
 	}
 
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
+// computeStageHashes computes hashes for multiple stages in one pass
+func computeStageHashes(root string, config *Config, ws *Workspace, stages []Stage) (map[string]string, error) {
+	result := make(map[string]string)
+	for _, stage := range stages {
+		hash, err := computeStageHash(stage, root, config, ws)
+		if err != nil {
+			return nil, err
+		}
+		result[stage.Name] = hash
+	}
+	return result, nil
+}
+
+// matchesPatterns checks if a filename matches any of the given patterns
+func matchesPatterns(filename string, patterns []string) bool {
+	for _, pattern := range patterns {
+		// Simple pattern matching: *.rs, *.toml
+		if strings.HasPrefix(pattern, "*.") {
+			ext := pattern[1:] // Get .rs or .toml
+			if strings.HasSuffix(filename, ext) {
+				return true
+			}
+		} else if pattern == "*" {
+			// Match all files
+			return true
+		} else if filename == pattern {
+			// Exact filename match
+			return true
+		}
+	}
+	return false
 }
 
 // loadCache loads the cache from .local-ci-cache

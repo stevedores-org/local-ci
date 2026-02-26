@@ -23,7 +23,7 @@ type DryRunReport struct {
 }
 
 // BuildDryRunReport creates a dry-run report for the given stages
-func BuildDryRunReport(stages []Stage, cache map[string]string, sourceHash string, noCache bool) DryRunReport {
+func BuildDryRunReport(stages []Stage, cache map[string]string, sourceHash string, stageHashes map[string]string, noCache bool) DryRunReport {
 	workspace, _ := os.Getwd()
 
 	var dryRunStages []DryRunStage
@@ -40,12 +40,19 @@ func BuildDryRunReport(stages []Stage, cache map[string]string, sourceHash strin
 		} else if noCache {
 			dryRunStage.WouldRun = true
 			dryRunStage.Reason = "no_cache_flag"
-		} else if cache[stage.Name] == sourceHash {
-			dryRunStage.WouldRun = false
-			dryRunStage.Reason = "cached"
 		} else {
-			dryRunStage.WouldRun = true
-			dryRunStage.Reason = "hash_changed"
+			// Use stage-specific hash for cache comparison
+			stageHash := sourceHash
+			if stageHashes != nil {
+				stageHash = stageHashes[stage.Name]
+			}
+			if cache[stage.Name] == stageHash {
+				dryRunStage.WouldRun = false
+				dryRunStage.Reason = "cached"
+			} else {
+				dryRunStage.WouldRun = true
+				dryRunStage.Reason = "hash_changed"
+			}
 		}
 
 		dryRunStages = append(dryRunStages, dryRunStage)

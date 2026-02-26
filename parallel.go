@@ -17,6 +17,7 @@ type ParallelRunner struct {
 	NoCache     bool
 	Cache       map[string]string
 	SourceHash  string
+	StageHashes map[string]string // Per-stage hashes for cache validation
 	Verbose     bool
 	JSON        bool
 	FailFast    bool
@@ -129,8 +130,15 @@ func (r *ParallelRunner) Run() []Result {
 func (r *ParallelRunner) executeStage(stage Stage) Result {
 	stageStart := time.Now()
 
-	// Check cache
-	if !r.NoCache && r.Cache[stage.Name] == r.SourceHash {
+	// Check cache - compare against stage-specific hash if available
+	var stageHash string
+	if r.StageHashes != nil {
+		stageHash = r.StageHashes[stage.Name]
+	} else {
+		stageHash = r.SourceHash
+	}
+
+	if !r.NoCache && r.Cache[stage.Name] == stageHash {
 		return Result{
 			Name:     stage.Name,
 			Status:   "pass",

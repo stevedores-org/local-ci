@@ -48,19 +48,22 @@ func TestStageHashDiffersWithWatchPatterns(t *testing.T) {
 	}
 
 	// Stage watching only *.rs files
-	fmtHash, err := computeStageHash(dir, config, nil, []string{"*.rs"})
+	fmtStage := Stage{Name: "fmt", Watch: []string{"*.rs"}}
+	fmtHash, err := computeStageHash(fmtStage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash for fmt failed: %v", err)
 	}
 
 	// Stage watching *.rs + Cargo.toml + Cargo.lock
-	clippyHash, err := computeStageHash(dir, config, nil, []string{"*.rs", "Cargo.toml", "Cargo.lock"})
+	clippyStage := Stage{Name: "clippy", Watch: []string{"*.rs", "Cargo.toml", "Cargo.lock"}}
+	clippyHash, err := computeStageHash(clippyStage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash for clippy failed: %v", err)
 	}
 
 	// Stage watching only dep files
-	denyHash, err := computeStageHash(dir, config, nil, []string{"Cargo.toml", "Cargo.lock", "deny.toml"})
+	denyStage := Stage{Name: "deny", Watch: []string{"Cargo.toml", "Cargo.lock", "deny.toml"}}
+	denyHash, err := computeStageHash(denyStage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash for deny failed: %v", err)
 	}
@@ -88,13 +91,15 @@ func TestStageHashFallsBackToGlobalPatterns(t *testing.T) {
 	}
 
 	// Empty watch → falls back to global include patterns
-	fallbackHash, err := computeStageHash(dir, config, nil, nil)
+	fallbackStage := Stage{Name: "test", Watch: nil}
+	fallbackHash, err := computeStageHash(fallbackStage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash with nil patterns failed: %v", err)
 	}
 
 	// Explicit global patterns should match
-	explicitHash, err := computeStageHash(dir, config, nil, []string{"*.rs", "*.toml", "*.lock"})
+	explicitStage := Stage{Name: "test", Watch: []string{"*.rs", "*.toml", "*.lock"}}
+	explicitHash, err := computeStageHash(explicitStage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash with explicit patterns failed: %v", err)
 	}
@@ -214,7 +219,8 @@ func TestStageHashIgnoresTargetDir(t *testing.T) {
 		},
 	}
 
-	hash1, err := computeStageHash(dir, config, nil, []string{"*.rs"})
+	stage := Stage{Name: "fmt", Watch: []string{"*.rs"}}
+	hash1, err := computeStageHash(stage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash #1 failed: %v", err)
 	}
@@ -222,7 +228,7 @@ func TestStageHashIgnoresTargetDir(t *testing.T) {
 	// Modify file in target/ — should not affect hash
 	os.WriteFile(filepath.Join(dir, "target", "junk.rs"), []byte("changed junk"), 0o644)
 
-	hash2, err := computeStageHash(dir, config, nil, []string{"*.rs"})
+	hash2, err := computeStageHash(stage, dir, config, nil)
 	if err != nil {
 		t.Fatalf("computeStageHash #2 failed: %v", err)
 	}
