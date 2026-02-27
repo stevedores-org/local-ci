@@ -7,16 +7,16 @@ kind = "go"
 [stages]
 
 [stages.fmt]
-run = "gofmt -l ."
-fix = "gofmt -w ."
+cmd = ["gofmt", "-l", "."]
+fix_cmd = ["gofmt", "-w", "."]
 enabled = true
 
 [stages.vet]
-run = "go vet ./..."
+cmd = ["go", "vet", "./..."]
 enabled = true
 
 [stages.test]
-run = "go test ./..."
+cmd = ["go", "test", "./..."]
 enabled = true
 
 [stage_order]
