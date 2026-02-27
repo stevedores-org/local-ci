@@ -623,6 +623,85 @@ func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (
 	return fmt.Sprintf("%x", h.Sum(nil)), nil
 }
 
+// computeStageHash computes MD5 hash for a specific stage based on its watch patterns
+func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (string, error) {
+	h := md5.New()
+
+	// If no watch patterns, use global hash
+	if len(stage.Watch) == 0 {
+		return computeSourceHash(root, config, ws)
+	}
+
+	// Build skip set from config
+	skipDirs := make(map[string]bool)
+	for _, dir := range config.Cache.SkipDirs {
+		skipDirs[dir] = true
+	}
+
+	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+
+		// Skip directories in config
+		if d.IsDir() {
+			if skipDirs[d.Name()] {
+				return filepath.SkipDir
+			}
+		}
+
+		// Skip excluded workspace members
+		if ws != nil && !ws.IsSingle {
+			relPath, err := filepath.Rel(root, path)
+			if err == nil && ws.IsExcluded(relPath) {
+				if d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+		}
+
+		// Hash files matching watch patterns
+		if !d.IsDir() {
+			shouldHash := false
+			for _, pattern := range stage.Watch {
+				// Simple pattern matching: *.rs, *.toml
+				if strings.HasPrefix(pattern, "*.") {
+					ext := pattern[1:] // Get .rs or .toml
+					if strings.HasSuffix(d.Name(), ext) {
+						shouldHash = true
+						break
+					}
+				} else if pattern == "*" {
+					// Match all files
+					shouldHash = true
+					break
+				} else if d.Name() == pattern {
+					// Exact filename match
+					shouldHash = true
+					break
+				}
+			}
+
+			if shouldHash {
+				data, err := os.ReadFile(path)
+				if err != nil {
+					return nil // Skip unreadable files
+				}
+				h.Write(data)
+			}
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		return "", err
+	}
+
+	return fmt.Sprintf("%x", h.Sum(nil)), nil
+}
+
 // loadCache loads the cache from .local-ci-cache
 func loadCache(root string) (map[string]string, error) {
 	cache := make(map[string]string)
