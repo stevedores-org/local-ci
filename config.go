@@ -18,14 +18,6 @@ type Profile struct {
 	JSON     bool     `toml:"json"`
 }
 
-// Profile defines a named set of overrides for stage selection and flags.
-type Profile struct {
-	Stages   []string `toml:"stages"` // stage names to enable (overrides enabled)
-	FailFast bool     `toml:"fail_fast"`
-	NoCache  bool     `toml:"no_cache"`
-	JSON     bool     `toml:"json"`
-}
-
 // Config represents the .local-ci.toml configuration file
 type Config struct {
 	Cache        CacheConfig        `toml:"cache"`
