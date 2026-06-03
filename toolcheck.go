@@ -87,6 +87,30 @@ var systemTools = []Tool{
 		ToolType:   "system",
 		Optional:   true,
 	},
+	{
+		Name:       "swift-format",
+		Command:    "swift-format",
+		CheckArgs:  []string{"--version"},
+		InstallCmd: "brew install swift-format",
+		ToolType:   "system",
+		Optional:   true,
+	},
+	{
+		Name:       "swiftlint",
+		Command:    "swiftlint",
+		CheckArgs:  []string{"version"},
+		InstallCmd: "brew install swiftlint",
+		ToolType:   "system",
+		Optional:   true,
+	},
+	{
+		Name:       "xcodebuild",
+		Command:    "xcodebuild",
+		CheckArgs:  []string{"-version"},
+		InstallCmd: "xcode-select --install",
+		ToolType:   "system",
+		Optional:   true,
+	},
 }
 
 // ToolCheck represents the result of checking for a tool
