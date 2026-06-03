@@ -17,7 +17,7 @@ func TestDetectProjectKind_Swift(t *testing.T) {
 	spmDir := filepath.Join(tempDir, "spm")
 	os.MkdirAll(spmDir, 0755)
 	os.WriteFile(filepath.Join(spmDir, "Package.swift"), []byte("// swift-tools-version: 5.9"), 0644)
-	
+
 	if kind := DetectProjectKind(spmDir); kind != ProjectKindSwift {
 		t.Errorf("expected ProjectKindSwift for SPM, got %v", kind)
 	}
@@ -25,7 +25,7 @@ func TestDetectProjectKind_Swift(t *testing.T) {
 	// Test Xcode detection
 	xcodeDir := filepath.Join(tempDir, "xcode")
 	os.MkdirAll(filepath.Join(xcodeDir, "MyApp.xcodeproj"), 0755)
-	
+
 	if kind := DetectProjectKind(xcodeDir); kind != ProjectKindSwift {
 		t.Errorf("expected ProjectKindSwift for Xcode, got %v", kind)
 	}
@@ -33,7 +33,7 @@ func TestDetectProjectKind_Swift(t *testing.T) {
 
 func TestGetDefaultStagesForType_Swift(t *testing.T) {
 	stages := GetDefaultStagesForType(ProjectTypeSwift)
-	
+
 	if _, ok := stages["fmt"]; !ok {
 		t.Error("expected 'fmt' stage for Swift")
 	}

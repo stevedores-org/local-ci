@@ -85,7 +85,7 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 	// Since GetDefaultStagesForType signature doesn't include root, we'll
 	// use the current directory or handle it in the caller.
 	// Actually, the stages can be generic enough or use detection logic inside.
-	
+
 	switch projectType {
 	case ProjectTypeRust:
 		return getRustStages()
