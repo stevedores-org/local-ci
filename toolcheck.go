@@ -148,6 +148,7 @@ func GetMissingTools() []string {
 // GetMissingToolsWithHints returns missing tools with installation hints for the given project kind.
 func GetMissingToolsWithHints(kind ProjectKind) map[string]string {
 	hints := make(map[string]string)
+	platform := DetectPlatform()
 
 	var tools []Tool
 	switch kind {
@@ -160,7 +161,14 @@ func GetMissingToolsWithHints(kind ProjectKind) map[string]string {
 
 	for _, tool := range tools {
 		if tool.Optional && !CheckToolInstalled(&tool).Found {
-			hints[tool.Name] = tool.InstallCmd
+			installCmd := tool.InstallCmd
+			if platform.IsNixOS() {
+				installCmd = fmt.Sprintf("nix profile install nixpkgs#%s", tool.Command)
+				if tool.ToolType == "cargo" {
+					installCmd = fmt.Sprintf("nix profile install nixpkgs#%s\n# Or add to your flake.nix devShell", tool.Command)
+				}
+			}
+			hints[tool.Name] = installCmd
 		}
 	}
 
