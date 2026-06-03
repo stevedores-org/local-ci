@@ -14,9 +14,9 @@ func TestDetectPlatformSmoke(t *testing.T) {
 
 func TestPlatformFlags(t *testing.T) {
 	cases := []struct {
-		p        Platform
-		isWSL    bool
-		isNixOS  bool
+		p       Platform
+		isWSL   bool
+		isNixOS bool
 	}{
 		{PlatformMacOS, false, false},
 		{PlatformLinux, false, false},

@@ -56,7 +56,7 @@ func DetectPlatform() Platform {
 
 func isMacOS() bool {
 	// Simple check, can be improved if needed
-	return strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "darwin") || 
+	return strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "darwin") ||
 		isFileExists("/System/Library/CoreServices/SystemVersion.plist")
 }
 

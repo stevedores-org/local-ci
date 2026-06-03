@@ -141,6 +141,7 @@ func AddNixCache(cache NixCache) error {
 
 	return nil
 }
+
 // ConfigureAtticCache specifically configures the stevedores attic cache
 func ConfigureAtticCache() error {
 	if !CheckNixInstallation() {

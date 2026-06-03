@@ -174,6 +174,7 @@ func GetMissingToolsWithHints(kind ProjectKind) map[string]string {
 
 	return hints
 }
+
 // ToolIsAvailable checks if a tool is available for running
 func ToolIsAvailable(toolName string) bool {
 	check := getToolByName(toolName)
