@@ -115,25 +115,32 @@ func AddNixCache(cache NixCache) error {
 		return nil
 	}
 
+	platform := DetectPlatform()
+
+	if platform.IsNixOS() {
+		successf("\n💡 NixOS detected. To permanently add this cache, add to your NixOS configuration:\n")
+		printf("   nix.settings.substituters = [ \"%s\" ];\n", cache.URL)
+		if cache.PublicKey != "" {
+			printf("   nix.settings.trusted-public-keys = [ \"%s\" ];\n", cache.PublicKey)
+		}
+		printf("\n   Then run: sudo nixos-rebuild switch\n\n")
+		return nil
+	}
+
 	// Build nix.conf addition
 	cacheEntry := fmt.Sprintf("extra-substituters = %s\n", cache.URL)
 	if cache.Trusted && cache.PublicKey != "" {
 		cacheEntry += fmt.Sprintf("trusted-public-keys = %s\n", cache.PublicKey)
 	}
-	_ = cacheEntry // reserved for future auto-write support
 
 	warnf("To add cache manually, add to ~/.config/nix/nix.conf:\n")
 	warnf("  extra-substituters = %s\n", cache.URL)
 	if cache.PublicKey != "" {
 		warnf("  trusted-public-keys = %s\n", cache.PublicKey)
-	} else if cache.Trusted {
-		warnf("  ⚠️  No public key available for %s yet — signatures will fail until the key is published.\n", cache.Name)
-		warnf("  Check https://github.com/stevedores-org/local-ci for the trusted-public-keys value.\n")
 	}
 
 	return nil
 }
-
 // ConfigureAtticCache specifically configures the stevedores attic cache
 func ConfigureAtticCache() error {
 	if !CheckNixInstallation() {
