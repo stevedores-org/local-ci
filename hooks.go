@@ -24,6 +24,8 @@ func getPreCommitHookTemplate(root string) string {
 		stagesCmd = "lint"
 	case ProjectTypeJava:
 		stagesCmd = "build"
+	case ProjectTypeSwift:
+		stagesCmd = "fmt"
 	default:
 		stagesCmd = "fmt"
 	}
