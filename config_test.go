@@ -521,6 +521,21 @@ func TestResolveRemoteHost_RemoteFlagBeatsPresetHost(t *testing.T) {
 	}
 }
 
+func TestListRemoteHosts_Sorted(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	got := cfg.ListRemoteHosts()
+	if len(got) != 2 {
+		t.Fatalf("expected 2 hosts, got %d", len(got))
+	}
+	if got[0].Name != "aivcs2" || got[1].Name != "studio" {
+		t.Fatalf("expected sorted aivcs2, studio; got %#v", got)
+	}
+}
+
 func TestRemoteHostsLookup_NoPresetsDefined(t *testing.T) {
 	// LoadConfig with remote=true but no [hosts.*] sections at all → lookup
 	// must surface a clear "no presets defined" error, not just "not found".

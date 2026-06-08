@@ -179,22 +179,23 @@ func toJSONResults(results []Result) []ResultJSON {
 
 func main() {
 	var (
-		flagNoCache       = flag.Bool("no-cache", false, "Disable file hash cache")
-		flagVerbose       = flag.Bool("verbose", false, "Show detailed output")
-		flagFix           = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
-		flagList          = flag.Bool("list", false, "List available stages")
-		flagVersion       = flag.Bool("version", false, "Print version")
-		flagAll           = flag.Bool("all", false, "Run all stages including disabled ones")
-		flagRemote        = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
-		flagRemoteHost    = flag.String("remote-host", "", "Run remotely using a named preset from .local-ci-remote.toml (`[hosts.<name>]`)")
-		flagSession       = flag.String("session", "onion", "tmux session name for remote execution")
-		flagRemoteTimeout = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
-		flagRemoteDir     = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
-		flagProfile       = flag.String("profile", "", "Use a named profile from config")
-		flagDryRun        = flag.Bool("dry-run", false, "Show what would run without executing")
-		flagParallel      = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
-		flagJSON          = flag.Bool("json", false, "Output in JSON format")
-		flagFailFast      = flag.Bool("fail-fast", false, "Stop on first failure")
+		flagNoCache         = flag.Bool("no-cache", false, "Disable file hash cache")
+		flagVerbose         = flag.Bool("verbose", false, "Show detailed output")
+		flagFix             = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagList            = flag.Bool("list", false, "List available stages")
+		flagListRemoteHosts = flag.Bool("list-remote-hosts", false, "List named remote host presets from .local-ci-remote.toml")
+		flagVersion         = flag.Bool("version", false, "Print version")
+		flagAll             = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote          = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
+		flagRemoteHost      = flag.String("remote-host", "", "Run remotely using a named preset from .local-ci-remote.toml (`[hosts.<name>]`)")
+		flagSession         = flag.String("session", "onion", "tmux session name for remote execution")
+		flagRemoteTimeout   = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
+		flagRemoteDir       = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
+		flagProfile         = flag.String("profile", "", "Use a named profile from config")
+		flagDryRun          = flag.Bool("dry-run", false, "Show what would run without executing")
+		flagParallel        = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
+		flagJSON            = flag.Bool("json", false, "Output in JSON format")
+		flagFailFast        = flag.Bool("fail-fast", false, "Stop on first failure")
 	)
 
 	flag.Usage = func() {
@@ -244,11 +245,34 @@ func main() {
 		}
 	}
 
-	// Load configuration. Pull the remote overlay whenever either remote-mode
-	// flag is set — `--remote-host` resolves names from [hosts.*] in that file.
-	config, err := LoadConfig(cwd, *flagRemote != "" || *flagRemoteHost != "")
+	// Load configuration. Pull the remote overlay whenever remote mode or
+	// preset listing is requested — `--remote-host` resolves [hosts.*].
+	needRemoteCfg := *flagRemote != "" || *flagRemoteHost != "" || *flagListRemoteHosts
+	config, err := LoadConfig(cwd, needRemoteCfg)
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
+	}
+
+	if *flagListRemoteHosts {
+		hosts := config.ListRemoteHosts()
+		if len(hosts) == 0 {
+			fmt.Println("No remote host presets defined. Add [hosts.<name>] to .local-ci-remote.toml")
+			return
+		}
+		for _, h := range hosts {
+			line := fmt.Sprintf("%s  host=%s", h.Name, h.Host)
+			if h.Session != "" {
+				line += fmt.Sprintf("  session=%s", h.Session)
+			}
+			if h.RemoteDir != "" {
+				line += fmt.Sprintf("  remote_dir=%s", h.RemoteDir)
+			}
+			if h.Description != "" {
+				line += fmt.Sprintf("  # %s", h.Description)
+			}
+			fmt.Println(line)
+		}
+		return
 	}
 
 	// Resolve `--remote-host <name>` into the underlying ssh/session/dir
