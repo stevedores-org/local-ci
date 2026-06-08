@@ -383,6 +383,45 @@ $ # Still in tmux session 'onion'
 $ cargo build  # Run manual commands after CI
 ```
 
+## Named Host Presets
+
+If you regularly target the same nodes, define `[hosts.<name>]` entries in
+`.local-ci-remote.toml` (see `.local-ci-remote.toml.example`) and use
+`--remote-host <name>` instead of repeating ssh / session / remote-dir flags
+on every invocation:
+
+```toml
+[hosts.aivcs2]
+host        = "aivcs@aivcs2"
+session     = "aivcs2-onion"
+remote_dir  = "/data/builds/local-ci"
+description = "DGX Spark — Grace+Blackwell, ARM64"
+```
+
+```bash
+# Equivalent to: local-ci --remote aivcs@aivcs2 --session aivcs2-onion --remote-dir /data/builds/local-ci
+local-ci --remote-host aivcs2
+
+# Mix-and-match: reuse the host preset but override session for this run
+local-ci --remote-host aivcs2 --session experiment
+```
+
+Precedence: an explicit CLI flag (`--remote`, `--session`, `--remote-dir`)
+always wins over the preset's value. The preset only fills in fields that
+the user did not pass. Unknown preset names produce an error listing the
+ones that *are* defined.
+
+### DGX Spark (aivcs2) notes
+
+- Architecture is `aarch64-unknown-linux-gnu`; building large Rust workspaces
+  benefits from a local toolchain (`rustup default stable-aarch64`) and a
+  warmed `~/.cargo/registry` on the same SSD as `remote_dir`.
+- CUDA-aware crates can pick up the Blackwell SM via `CUDA_PATH` and
+  `LD_LIBRARY_PATH`; set those in the tmux session or via a stage-level
+  environment override.
+- Pair with Tailscale + `autossh` (see the Quick Start) for a stable
+  long-lived tmux session that survives roaming between networks.
+
 ## Security Considerations
 
 - **SSH keys**: Use key-based auth only, no passwords

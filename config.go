@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/BurntSushi/toml"
@@ -20,11 +21,26 @@ type Profile struct {
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
-	Cache        CacheConfig        `toml:"cache"`
-	Stages       map[string]Stage   `toml:"stages"`
-	Dependencies DepsConfig         `toml:"dependencies"`
-	Workspace    WorkspaceConfig    `toml:"workspace"`
-	Profiles     map[string]Profile `toml:"profiles"`
+	Cache        CacheConfig           `toml:"cache"`
+	Stages       map[string]Stage      `toml:"stages"`
+	Dependencies DepsConfig            `toml:"dependencies"`
+	Workspace    WorkspaceConfig       `toml:"workspace"`
+	Profiles     map[string]Profile    `toml:"profiles"`
+	Hosts        map[string]RemoteHost `toml:"hosts"`
+}
+
+// RemoteHost is a named SSH+tmux target loaded from .local-ci-remote.toml.
+// Lets users say `--remote-host aivcs2` instead of repeating
+// `--remote aivcs@aivcs2 --session aivcs2-onion --remote-dir /data/builds`.
+type RemoteHost struct {
+	// SSH spec: "user@host" or just "host". Required.
+	Host string `toml:"host"`
+	// tmux session name; if empty, the --session flag (or its default) wins.
+	Session string `toml:"session"`
+	// Remote working directory; if empty, falls back to --remote-dir or /tmp/<basename>.
+	RemoteDir string `toml:"remote_dir"`
+	// Human-readable note shown by tooling. Optional.
+	Description string `toml:"description"`
 }
 
 // CacheConfig defines caching behavior
@@ -135,6 +151,18 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 			if len(remoteCfg.Workspace.Exclude) > 0 {
 				cfg.Workspace.Exclude = remoteCfg.Workspace.Exclude
 			}
+
+			// Carry over named host presets ([hosts.*]) verbatim. These only
+			// live in the remote config file — they have no analogue in the
+			// per-project local config.
+			if len(remoteCfg.Hosts) > 0 {
+				if cfg.Hosts == nil {
+					cfg.Hosts = make(map[string]RemoteHost, len(remoteCfg.Hosts))
+				}
+				for name, h := range remoteCfg.Hosts {
+					cfg.Hosts[name] = h
+				}
+			}
 		}
 	}
 
@@ -143,6 +171,12 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 		if _, exists := cfg.Stages[name]; !exists {
 			cfg.Stages[name] = defaultStage
 		}
+	}
+
+	// Ensure Name field is set for all stages from the map key
+	for name, stage := range cfg.Stages {
+		stage.Name = name
+		cfg.Stages[name] = stage
 	}
 
 	return cfg, nil
@@ -307,6 +341,79 @@ func (c *Config) GetEnabledStages() []string {
 	enabled = append(enabled, extra...)
 
 	return enabled
+}
+
+// GetRemoteHost looks up a named host preset (loaded from
+// `.local-ci-remote.toml`) by name. Returns an actionable error when the
+// name is unknown — listing the names that *are* defined, or saying that
+// no presets exist at all — so users don't have to grep the config file.
+func (c *Config) GetRemoteHost(name string) (*RemoteHost, error) {
+	if len(c.Hosts) == 0 {
+		return nil, fmt.Errorf(
+			"no remote host presets defined; add `[hosts.%s]` to .local-ci-remote.toml",
+			name,
+		)
+	}
+	h, ok := c.Hosts[name]
+	if !ok {
+		available := make([]string, 0, len(c.Hosts))
+		for n := range c.Hosts {
+			available = append(available, n)
+		}
+		sort.Strings(available)
+		return nil, fmt.Errorf(
+			"remote host preset %q not found; available: %s",
+			name,
+			strings.Join(available, ", "),
+		)
+	}
+	if strings.TrimSpace(h.Host) == "" {
+		return nil, fmt.Errorf(
+			"remote host preset %q has empty `host` field in .local-ci-remote.toml",
+			name,
+		)
+	}
+	return &h, nil
+}
+
+// ResolvedRemoteTarget is the result of merging a `[hosts.<name>]` preset
+// with command-line overrides. Empty fields mean "use the caller's default".
+type ResolvedRemoteTarget struct {
+	Host      string
+	Session   string
+	RemoteDir string
+}
+
+// ResolveRemoteHost applies a named preset onto flag-derived defaults using
+// flag > preset > default precedence. Each `userSet*` argument indicates
+// whether the CLI flag was explicitly passed (vs. left at its default), so
+// that an explicit `--session onion` still beats a preset with a non-default
+// session value.
+//
+// Pulled out of main() so it can be unit-tested.
+func (c *Config) ResolveRemoteHost(
+	name, hostFlag, sessionFlag, remoteDirFlag string,
+	userSetSession, userSetRemoteDir bool,
+) (ResolvedRemoteTarget, error) {
+	preset, err := c.GetRemoteHost(name)
+	if err != nil {
+		return ResolvedRemoteTarget{}, err
+	}
+	out := ResolvedRemoteTarget{
+		Host:      hostFlag,
+		Session:   sessionFlag,
+		RemoteDir: remoteDirFlag,
+	}
+	if out.Host == "" {
+		out.Host = preset.Host
+	}
+	if !userSetSession && preset.Session != "" {
+		out.Session = preset.Session
+	}
+	if !userSetRemoteDir && preset.RemoteDir != "" {
+		out.RemoteDir = preset.RemoteDir
+	}
+	return out, nil
 }
 
 // GetProfile returns a profile by name, validating that all referenced stages exist.

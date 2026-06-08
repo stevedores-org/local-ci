@@ -54,6 +54,88 @@ type Stage struct {
 	Watch     []string // file patterns this stage cares about (for granular caching)
 }
 
+func (s *Stage) UnmarshalTOML(data interface{}) error {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Helper to extract string slice
+	getStringSlice := func(key string) []string {
+		if val, exists := m[key]; exists {
+			if list, ok := val.([]interface{}); ok {
+				var res []string
+				for _, item := range list {
+					if str, ok := item.(string); ok {
+						res = append(res, str)
+					}
+				}
+				return res
+			}
+		}
+		return nil
+	}
+
+	// Helper to extract bool
+	getBool := func(key string) bool {
+		if val, exists := m[key]; exists {
+			if b, ok := val.(bool); ok {
+				return b
+			}
+		}
+		return false
+	}
+
+	// Helper to extract int
+	getInt := func(key string) int {
+		if val, exists := m[key]; exists {
+			switch v := val.(type) {
+			case int:
+				return v
+			case int64:
+				return int(v)
+			case float64:
+				return int(v)
+			}
+		}
+		return 0
+	}
+
+	// Helper to extract string
+	getString := func(key string) string {
+		if val, exists := m[key]; exists {
+			if str, ok := val.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
+
+	if name := getString("name"); name != "" {
+		s.Name = name
+	}
+
+	s.Cmd = getStringSlice("command")
+	if len(s.Cmd) == 0 {
+		s.Cmd = getStringSlice("cmd")
+	}
+	s.FixCmd = getStringSlice("fix_command")
+	if len(s.FixCmd) == 0 {
+		s.FixCmd = getStringSlice("fix_cmd")
+	}
+	s.Check = getBool("check")
+	s.Timeout = getInt("timeout")
+	if val, exists := m["enabled"]; exists {
+		if b, ok := val.(bool); ok {
+			s.Enabled = b
+		}
+	}
+	s.DependsOn = getStringSlice("depends_on")
+	s.Watch = getStringSlice("watch")
+
+	return nil
+}
+
 type Result struct {
 	Name     string
 	Command  string
@@ -97,21 +179,22 @@ func toJSONResults(results []Result) []ResultJSON {
 
 func main() {
 	var (
-		flagNoCache        = flag.Bool("no-cache", false, "Disable file hash cache")
-		flagVerbose        = flag.Bool("verbose", false, "Show detailed output")
-		flagFix            = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
-		flagList           = flag.Bool("list", false, "List available stages")
-		flagVersion        = flag.Bool("version", false, "Print version")
-		flagAll            = flag.Bool("all", false, "Run all stages including disabled ones")
-		flagRemote         = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
-		flagSession        = flag.String("session", "onion", "tmux session name for remote execution")
-		flagRemoteTimeout  = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
-		flagRemoteDir      = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
-		flagProfile        = flag.String("profile", "", "Use a named profile from config")
-		flagDryRun         = flag.Bool("dry-run", false, "Show what would run without executing")
-		flagParallel       = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
-		flagJSON           = flag.Bool("json", false, "Output in JSON format")
-		flagFailFast       = flag.Bool("fail-fast", false, "Stop on first failure")
+		flagNoCache       = flag.Bool("no-cache", false, "Disable file hash cache")
+		flagVerbose       = flag.Bool("verbose", false, "Show detailed output")
+		flagFix           = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagList          = flag.Bool("list", false, "List available stages")
+		flagVersion       = flag.Bool("version", false, "Print version")
+		flagAll           = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote        = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
+		flagRemoteHost    = flag.String("remote-host", "", "Run remotely using a named preset from .local-ci-remote.toml (`[hosts.<name>]`)")
+		flagSession       = flag.String("session", "onion", "tmux session name for remote execution")
+		flagRemoteTimeout = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
+		flagRemoteDir     = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
+		flagProfile       = flag.String("profile", "", "Use a named profile from config")
+		flagDryRun        = flag.Bool("dry-run", false, "Show what would run without executing")
+		flagParallel      = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
+		flagJSON          = flag.Bool("json", false, "Output in JSON format")
+		flagFailFast      = flag.Bool("fail-fast", false, "Stop on first failure")
 	)
 
 	flag.Usage = func() {
@@ -161,10 +244,42 @@ func main() {
 		}
 	}
 
-	// Load configuration
-	config, err := LoadConfig(cwd, *flagRemote != "")
+	// Load configuration. Pull the remote overlay whenever either remote-mode
+	// flag is set — `--remote-host` resolves names from [hosts.*] in that file.
+	config, err := LoadConfig(cwd, *flagRemote != "" || *flagRemoteHost != "")
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
+	}
+
+	// Resolve `--remote-host <name>` into the underlying ssh/session/dir
+	// values. Explicit CLI flags always win over preset fields, so e.g.
+	// `--remote-host aivcs2 --session experiment` reuses the preset's host
+	// but overrides its session for this one run.
+	if *flagRemoteHost != "" {
+		userSetSession := false
+		userSetRemoteDir := false
+		flag.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "session":
+				userSetSession = true
+			case "remote-dir":
+				userSetRemoteDir = true
+			}
+		})
+		resolved, err := config.ResolveRemoteHost(
+			*flagRemoteHost,
+			*flagRemote, *flagSession, *flagRemoteDir,
+			userSetSession, userSetRemoteDir,
+		)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		*flagRemote = resolved.Host
+		*flagSession = resolved.Session
+		*flagRemoteDir = resolved.RemoteDir
+		if *flagVerbose {
+			printf("📍 Using host preset %q → %s\n", *flagRemoteHost, *flagRemote)
+		}
 	}
 
 	// Apply profile if specified
@@ -423,6 +538,22 @@ func main() {
 
 			// Print stage header
 			printf("::group::%s\n", stage.Name)
+			if len(stage.Cmd) == 0 {
+				printf("Error: Stage has no command defined\n")
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "fail",
+					Duration: 0,
+					Error:    fmt.Errorf("no command defined"),
+				})
+				if *flagFailFast {
+					break
+				}
+				continue
+			}
+
 			if *flagVerbose {
 				cmdStr := strings.Join(stage.Cmd, " ")
 				printf("$ %s\n", cmdStr)
