@@ -309,6 +309,15 @@ func main() {
 		}
 		re := NewRemoteExecutor(*flagRemote, *flagSession, workDir, time.Duration(*flagRemoteTimeout)*time.Second, *flagVerbose)
 
+		// Sync local workspace to remote
+		printf("🔄 Synchronizing local workspace to remote...\n")
+		syncCtx, syncCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		if err := re.SyncWorkspace(syncCtx, cwd, config.Cache.SkipDirs); err != nil {
+			syncCancel()
+			fatalf("Failed to sync workspace to remote: %v", err)
+		}
+		syncCancel()
+
 		printf("🚀 Running local CI pipeline remotely on %s...\n\n", *flagRemote)
 
 		// Ensure remote session exists
