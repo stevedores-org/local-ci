@@ -376,6 +376,42 @@ func (c *Config) GetRemoteHost(name string) (*RemoteHost, error) {
 	return &h, nil
 }
 
+// ListRemoteHosts returns named presets sorted for display.
+func (c *Config) ListRemoteHosts() []struct {
+	Name        string
+	Host        string
+	Session     string
+	RemoteDir   string
+	Description string
+} {
+	if len(c.Hosts) == 0 {
+		return nil
+	}
+	names := make([]string, 0, len(c.Hosts))
+	for n := range c.Hosts {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]struct {
+		Name        string
+		Host        string
+		Session     string
+		RemoteDir   string
+		Description string
+	}, 0, len(names))
+	for _, n := range names {
+		h := c.Hosts[n]
+		out = append(out, struct {
+			Name        string
+			Host        string
+			Session     string
+			RemoteDir   string
+			Description string
+		}{n, h.Host, h.Session, h.RemoteDir, h.Description})
+	}
+	return out
+}
+
 // ResolvedRemoteTarget is the result of merging a `[hosts.<name>]` preset
 // with command-line overrides. Empty fields mean "use the caller's default".
 type ResolvedRemoteTarget struct {
