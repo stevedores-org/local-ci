@@ -242,3 +242,46 @@ func (re *RemoteExecutor) KillRemoteSession(ctx context.Context) error {
 func (re *RemoteExecutor) TestSSHConnection(ctx context.Context) error {
 	return re.sshExec(ctx, "echo 'SSH connection OK'")
 }
+
+// SyncWorkspace uses rsync to synchronize local directory to remote WorkDir
+func (re *RemoteExecutor) SyncWorkspace(ctx context.Context, localDir string, skipDirs []string) error {
+	// 1. Ensure remote WorkDir exists
+	mkdirCmd := fmt.Sprintf("mkdir -p %s", escapeShellArg(re.WorkDir))
+	if err := re.sshExec(ctx, mkdirCmd); err != nil {
+		return fmt.Errorf("failed to create remote work directory: %w", err)
+	}
+
+	// 2. Build rsync command arguments
+	rsyncArgs := []string{"-az", "--delete"}
+
+	// Add default excludes
+	rsyncArgs = append(rsyncArgs, "--exclude", ".git", "--exclude", ".local-ci-cache")
+
+	// Add custom skipDirs from config
+	for _, dir := range skipDirs {
+		if dir != "" && dir != ".git" {
+			rsyncArgs = append(rsyncArgs, "--exclude", dir)
+		}
+	}
+
+	// Source path must end with slash to copy contents, not the directory itself
+	src := localDir
+	if !strings.HasSuffix(src, "/") {
+		src += "/"
+	}
+	dest := fmt.Sprintf("%s:%s", re.Host, re.WorkDir)
+	rsyncArgs = append(rsyncArgs, src, dest)
+
+	if re.Verbose {
+		printf("Syncing workspace to remote: rsync %s\n", strings.Join(rsyncArgs, " "))
+	}
+
+	cmd := exec.CommandContext(ctx, "rsync", rsyncArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("rsync failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	return nil
+}
