@@ -97,18 +97,21 @@ func toJSONResults(results []Result) []ResultJSON {
 
 func main() {
 	var (
-		flagNoCache  = flag.Bool("no-cache", false, "Disable file hash cache")
-		flagVerbose  = flag.Bool("verbose", false, "Show detailed output")
-		flagFix      = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
-		flagList     = flag.Bool("list", false, "List available stages")
-		flagVersion  = flag.Bool("version", false, "Print version")
-		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
-		flagRemote   = flag.Bool("remote", false, "Load remote config from .local-ci-remote.toml")
-		flagProfile  = flag.String("profile", "", "Use a named profile from config")
-		flagDryRun   = flag.Bool("dry-run", false, "Show what would run without executing")
-		flagParallel = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
-		flagJSON     = flag.Bool("json", false, "Output in JSON format")
-		flagFailFast = flag.Bool("fail-fast", false, "Stop on first failure")
+		flagNoCache        = flag.Bool("no-cache", false, "Disable file hash cache")
+		flagVerbose        = flag.Bool("verbose", false, "Show detailed output")
+		flagFix            = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagList           = flag.Bool("list", false, "List available stages")
+		flagVersion        = flag.Bool("version", false, "Print version")
+		flagAll            = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote         = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
+		flagSession        = flag.String("session", "onion", "tmux session name for remote execution")
+		flagRemoteTimeout  = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
+		flagRemoteDir      = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
+		flagProfile        = flag.String("profile", "", "Use a named profile from config")
+		flagDryRun         = flag.Bool("dry-run", false, "Show what would run without executing")
+		flagParallel       = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
+		flagJSON           = flag.Bool("json", false, "Output in JSON format")
+		flagFailFast       = flag.Bool("fail-fast", false, "Stop on first failure")
 	)
 
 	flag.Usage = func() {
@@ -159,7 +162,7 @@ func main() {
 	}
 
 	// Load configuration
-	config, err := LoadConfig(cwd, *flagRemote)
+	config, err := LoadConfig(cwd, *flagRemote != "")
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
 	}
@@ -298,6 +301,95 @@ func main() {
 			FailFast:    *flagFailFast,
 		}
 		results = runner.Run()
+	} else if *flagRemote != "" {
+		// Remote sequential execution via SSH+tmux
+		workDir := *flagRemoteDir
+		if workDir == "" {
+			workDir = filepath.Join("/tmp", filepath.Base(cwd))
+		}
+		re := NewRemoteExecutor(*flagRemote, *flagSession, workDir, time.Duration(*flagRemoteTimeout)*time.Second, *flagVerbose)
+
+		// Sync local workspace to remote
+		printf("🔄 Synchronizing local workspace to remote...\n")
+		syncCtx, syncCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		if err := re.SyncWorkspace(syncCtx, cwd, config.Cache.SkipDirs); err != nil {
+			syncCancel()
+			fatalf("Failed to sync workspace to remote: %v", err)
+		}
+		syncCancel()
+
+		printf("🚀 Running local CI pipeline remotely on %s...\n\n", *flagRemote)
+
+		// Ensure remote session exists
+		ctx, cancel := context.WithTimeout(context.Background(), re.Timeout)
+		if err := re.EnsureRemoteSession(ctx); err != nil {
+			cancel()
+			fatalf("Failed to initialize remote tmux session: %v", err)
+		}
+		cancel()
+
+		for _, stage := range stages {
+			stageStart := time.Now()
+
+			// Compute per-stage hash for granular caching
+			stageHash := sourceHash
+			if len(stage.Watch) > 0 {
+				var err error
+				stageHash, err = computeStageHash(stage, cwd, config, ws)
+				if err != nil && *flagVerbose {
+					warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+				}
+			}
+
+			// Check local cache
+			if !*flagNoCache && cache[stage.Name] == stageHash {
+				if *flagVerbose {
+					printf("✓ %s (cached)\n", stage.Name)
+				}
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "pass",
+					CacheHit: true,
+					Duration: 0,
+				})
+				continue
+			}
+
+			// Print stage header
+			printf("::group::%s\n", stage.Name)
+			if *flagVerbose {
+				cmdStr := strings.Join(stage.Cmd, " ")
+				printf("$ %s\n", cmdStr)
+			}
+
+			// Run stage remotely
+			result := re.ExecuteStage(stage)
+			duration := time.Since(stageStart)
+			result.Duration = duration // set actual local time spent
+
+			if result.Status == "fail" {
+				if result.Output != "" {
+					printf("%s\n", result.Output)
+				} else if result.Error != nil {
+					printf("Error: %v\n", result.Error)
+				}
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, result)
+				if *flagFailFast {
+					break
+				}
+			} else {
+				if *flagVerbose && result.Output != "" {
+					printf("%s\n", result.Output)
+				}
+				printf("::endgroup::\n")
+				printf("✓ %s (%dms)\n", stage.Name, result.Duration.Milliseconds())
+				results = append(results, result)
+				// Update cache
+				cache[stage.Name] = stageHash
+			}
+		}
 	} else {
 		// Sequential execution
 		printf("🚀 Running local CI pipeline...\n\n")
