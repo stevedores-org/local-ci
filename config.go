@@ -145,6 +145,12 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 		}
 	}
 
+	// Ensure Name field is set for all stages from the map key
+	for name, stage := range cfg.Stages {
+		stage.Name = name
+		cfg.Stages[name] = stage
+	}
+
 	return cfg, nil
 }
 

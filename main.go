@@ -54,6 +54,88 @@ type Stage struct {
 	Watch     []string // file patterns this stage cares about (for granular caching)
 }
 
+func (s *Stage) UnmarshalTOML(data interface{}) error {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Helper to extract string slice
+	getStringSlice := func(key string) []string {
+		if val, exists := m[key]; exists {
+			if list, ok := val.([]interface{}); ok {
+				var res []string
+				for _, item := range list {
+					if str, ok := item.(string); ok {
+						res = append(res, str)
+					}
+				}
+				return res
+			}
+		}
+		return nil
+	}
+
+	// Helper to extract bool
+	getBool := func(key string) bool {
+		if val, exists := m[key]; exists {
+			if b, ok := val.(bool); ok {
+				return b
+			}
+		}
+		return false
+	}
+
+	// Helper to extract int
+	getInt := func(key string) int {
+		if val, exists := m[key]; exists {
+			switch v := val.(type) {
+			case int:
+				return v
+			case int64:
+				return int(v)
+			case float64:
+				return int(v)
+			}
+		}
+		return 0
+	}
+
+	// Helper to extract string
+	getString := func(key string) string {
+		if val, exists := m[key]; exists {
+			if str, ok := val.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
+
+	if name := getString("name"); name != "" {
+		s.Name = name
+	}
+
+	s.Cmd = getStringSlice("command")
+	if len(s.Cmd) == 0 {
+		s.Cmd = getStringSlice("cmd")
+	}
+	s.FixCmd = getStringSlice("fix_command")
+	if len(s.FixCmd) == 0 {
+		s.FixCmd = getStringSlice("fix_cmd")
+	}
+	s.Check = getBool("check")
+	s.Timeout = getInt("timeout")
+	if val, exists := m["enabled"]; exists {
+		if b, ok := val.(bool); ok {
+			s.Enabled = b
+		}
+	}
+	s.DependsOn = getStringSlice("depends_on")
+	s.Watch = getStringSlice("watch")
+
+	return nil
+}
+
 type Result struct {
 	Name     string
 	Command  string
@@ -423,6 +505,22 @@ func main() {
 
 			// Print stage header
 			printf("::group::%s\n", stage.Name)
+			if len(stage.Cmd) == 0 {
+				printf("Error: Stage has no command defined\n")
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "fail",
+					Duration: 0,
+					Error:    fmt.Errorf("no command defined"),
+				})
+				if *flagFailFast {
+					break
+				}
+				continue
+			}
+
 			if *flagVerbose {
 				cmdStr := strings.Join(stage.Cmd, " ")
 				printf("$ %s\n", cmdStr)
