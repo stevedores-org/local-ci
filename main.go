@@ -186,6 +186,7 @@ func main() {
 		flagVersion       = flag.Bool("version", false, "Print version")
 		flagAll           = flag.Bool("all", false, "Run all stages including disabled ones")
 		flagRemote        = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
+		flagRemoteHost    = flag.String("remote-host", "", "Run remotely using a named preset from .local-ci-remote.toml (`[hosts.<name>]`)")
 		flagSession       = flag.String("session", "onion", "tmux session name for remote execution")
 		flagRemoteTimeout = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
 		flagRemoteDir     = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
@@ -243,10 +244,42 @@ func main() {
 		}
 	}
 
-	// Load configuration
-	config, err := LoadConfig(cwd, *flagRemote != "")
+	// Load configuration. Pull the remote overlay whenever either remote-mode
+	// flag is set — `--remote-host` resolves names from [hosts.*] in that file.
+	config, err := LoadConfig(cwd, *flagRemote != "" || *flagRemoteHost != "")
 	if err != nil {
 		fatalf("Failed to load config: %v", err)
+	}
+
+	// Resolve `--remote-host <name>` into the underlying ssh/session/dir
+	// values. Explicit CLI flags always win over preset fields, so e.g.
+	// `--remote-host aivcs2 --session experiment` reuses the preset's host
+	// but overrides its session for this one run.
+	if *flagRemoteHost != "" {
+		userSetSession := false
+		userSetRemoteDir := false
+		flag.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "session":
+				userSetSession = true
+			case "remote-dir":
+				userSetRemoteDir = true
+			}
+		})
+		resolved, err := config.ResolveRemoteHost(
+			*flagRemoteHost,
+			*flagRemote, *flagSession, *flagRemoteDir,
+			userSetSession, userSetRemoteDir,
+		)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		*flagRemote = resolved.Host
+		*flagSession = resolved.Session
+		*flagRemoteDir = resolved.RemoteDir
+		if *flagVerbose {
+			printf("📍 Using host preset %q → %s\n", *flagRemoteHost, *flagRemote)
+		}
 	}
 
 	// Apply profile if specified

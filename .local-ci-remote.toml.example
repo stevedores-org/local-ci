@@ -8,6 +8,29 @@
 # - Disable stages that don't work remotely
 # - Use different caching directory on shared storage
 # - Skip stages that are redundant with CI
+# - Define named host presets so callers can write
+#     local-ci --remote-host aivcs2
+#   instead of repeating the full ssh spec, session, and remote dir.
+
+# Named SSH+tmux targets. Reference with `local-ci --remote-host <name>`.
+# Required: host. Optional: session, remote_dir, description.
+
+[hosts.aivcs2]
+host        = "aivcs@aivcs2"
+session     = "aivcs2-onion"
+remote_dir  = "/data/builds/local-ci"
+description = "DGX Spark — Grace+Blackwell, ARM64"
+
+[hosts.studio]
+host        = "aivcs@aivcs.local"
+description = "Mac Studio M2 Ultra"
+
+[hosts.discovery]
+host        = "aivcs@discovery.local"
+
+[hosts.uranus]
+host        = "aivcs@100.81.115.15"
+description = "uranus.local via Tailscale"
 
 [cache]
 # Remote cache directory (relative to project root)
