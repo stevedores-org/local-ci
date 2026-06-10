@@ -33,15 +33,20 @@ description = "Tailscale macOS — enable Remote Login if SSH is refused"
 host        = "uranus"
 platform    = "macos"
 
+[hosts.downhome]
+host        = "downhome"
+platform    = "macos"
+description = "Local — Apple Silicon Mac (this machine), user aivcs"
+
 [hosts.studio]
 host        = "downhome"
 platform    = "macos"
-description = "This Mac on tailnet"
+description = "alias for downhome (local operator Mac)"
 
 [hosts.msi]
 host        = "msi"
 platform    = "windows"
-description = "Windows 11 + RTX 5070 — offline when logged out; OpenSSH + WSL/tmux for remote-ci"
+description = "Windows 11 + RTX 5070 — online when logged in; OpenSSH + WSL/tmux for remote-ci"
 
 [cache]
 cache_dir = ".local-ci-cache-remote"
