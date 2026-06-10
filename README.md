@@ -519,25 +519,16 @@ Sample schema:
 
 Run expensive stages (clippy, test) on remote hardware via **Tailscale + SSH+tmux** before pushing — keeps GitHub Actions minutes for PR gates only. See [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md) for full setup.
 
-**Prerequisite:** nodes must appear in `tailscale status` (e.g. `uranus`, `discovery`). Use MagicDNS short names — not `.local` mDNS.
+**Prerequisite:** nodes in `tailscale status`. SSH users are codified in [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md) — `aivcs` on macOS, `aivcs2` on Spark.
 
 ```bash
-tailscale status          # verify uranus / discovery are online
-tailscale ping uranus     # quick reachability check
+tailscale ping uranus
+ssh aivcs@uranus echo ok
+ssh aivcs2@spark-bde7 echo ok
 
-# Direct SSH target (Tailscale MagicDNS)
-local-ci --remote aivcs@uranus --session onion fmt clippy test
-local-ci --remote stevenirvin@discovery test
-local-ci --remote aivcs2@spark-bde7 --session sparky-onion test   # Spark Linux user
-
-# Named presets from .local-ci-remote.toml
-local-ci --remote-host sparky      # aivcs2@spark-bde7
-local-ci --remote-host uranus      # aivcs@uranus (or stevenirvin@uranus in config)
-local-ci --remote-host discovery
+local-ci --remote-host uranus fmt clippy test
+local-ci --remote-host sparky test
 local-ci --list-remote-hosts
-
-# Plan without executing
-local-ci --remote-host uranus --dry-run
 ```
 
 Flags: `--remote`, `--session`, `--remote-dir`, `--remote-timeout`, `--remote-host`, `--list-remote-hosts`.

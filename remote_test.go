@@ -253,12 +253,18 @@ func TestRemoteStageExecutionFailure(t *testing.T) {
 
 func TestIssue61HostPresetsDiscoveryAndUranus(t *testing.T) {
 	dir := t.TempDir()
-	example := `[hosts.discovery]
-host = "aivcs@discovery"
+	example := `
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
+[hosts.discovery]
+host = "discovery"
+platform = "macos"
 
 [hosts.uranus]
-host = "aivcs@uranus"
-description = "Tailscale macOS node"
+host = "uranus"
+platform = "macos"
 `
 	if err := os.WriteFile(filepath.Join(dir, ".local-ci-remote.toml"), []byte(example), 0644); err != nil {
 		t.Fatal(err)
@@ -279,7 +285,7 @@ description = "Tailscale macOS node"
 		}
 	}
 
-	discovery, err := cfg.ResolveRemoteHost("discovery", "", "onion", "", false, false)
+	discovery, err := cfg.GetRemoteHost("discovery")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -287,7 +293,7 @@ description = "Tailscale macOS node"
 		t.Errorf("discovery host: got %q", discovery.Host)
 	}
 
-	uranus, err := cfg.ResolveRemoteHost("uranus", "", "onion", "", false, false)
+	uranus, err := cfg.GetRemoteHost("uranus")
 	if err != nil {
 		t.Fatal(err)
 	}

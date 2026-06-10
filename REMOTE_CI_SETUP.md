@@ -385,35 +385,21 @@ $ cargo build  # Run manual commands after CI
 
 ## Tailscale (required for cluster nodes)
 
-Remote CI targets (`uranus`, `discovery`, `spark-bde7`, etc.) are reached over the **Tailscale tailnet**, not LAN mDNS (`.local`) or public IPs.
+Remote CI targets are on the **Tailscale tailnet**. SSH users are unified — see **[docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md)**:
+
+- **macOS** → `aivcs@<tailnet-name>`
+- **DGX Spark** → `aivcs2@spark-bde7` (`--remote-host sparky`)
 
 ```bash
-# 1. Confirm tailnet connectivity
 tailscale status
-tailscale ping uranus
-tailscale ping discovery
-
-# 2. SSH must work over MagicDNS (install your pubkey on the remote, or use Tailscale SSH)
 ssh aivcs@uranus echo ok
-# Alternative when Tailscale SSH ACLs are configured:
-# tailscale ssh uranus echo ok
+ssh aivcs2@spark-bde7 echo ok
 
-# 3. Run local-ci against a preset or explicit host
-local-ci --remote-host sparky fmt clippy test    # aivcs2@spark-bde7
-local-ci --remote-host uranus fmt clippy test    # aivcs@uranus
-local-ci --remote stevenirvin@discovery test     # alternate macOS user
+local-ci --remote-host sparky fmt clippy test
+local-ci --remote-host uranus --dry-run
 ```
 
-| Node | Tailscale name | SSH user | Example host string |
-|------|----------------|----------|---------------------|
-| uranus | `uranus` | `aivcs` or `stevenirvin` | `aivcs@uranus` |
-| discovery | `discovery` | `aivcs` or `stevenirvin` | `aivcs@discovery` |
-| DGX Spark (sparky) | `spark-bde7` | **`aivcs2`** | `aivcs2@spark-bde7` |
-| downhome (studio) | `downhome` | `aivcs` or `stevenirvin` | `aivcs@downhome` |
-
-macOS nodes share two operator accounts (**`aivcs`**, **`stevenirvin`**). Spark uses a dedicated Linux account **`aivcs2`**. Pick the user that has your SSH key in `authorized_keys`.
-
-Use **`user@<tailscale-name>`** in `.local-ci-remote.toml` — not `*.local` mDNS hostnames.
+Presets use bare tailnet names; `[ssh_defaults]` in `.local-ci-remote.toml` supplies the user.
 
 ## Named Host Presets
 
@@ -423,16 +409,20 @@ If you regularly target the same nodes, define `[hosts.<name>]` entries in
 on every invocation:
 
 ```toml
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
 [hosts.sparky]
-host        = "aivcs2@spark-bde7"
+host        = "spark-bde7"
+platform    = "linux_spark"
 session     = "sparky-onion"
 remote_dir  = "/data/builds/local-ci"
-description = "DGX Spark — Linux user aivcs2"
 ```
 
 ```bash
-# Equivalent to: local-ci --remote aivcs2@spark-bde7 --session sparky-onion --remote-dir /data/builds/local-ci
-local-ci --remote-host sparky
+local-ci --remote-host sparky   # → aivcs2@spark-bde7
+```
 
 # Mix-and-match: reuse the host preset but override session for this run
 local-ci --remote-host sparky --session experiment

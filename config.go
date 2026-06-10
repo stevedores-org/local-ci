@@ -21,6 +21,7 @@ type Profile struct {
 
 // Config represents the .local-ci.toml configuration file
 type Config struct {
+	SSHDefaults  RemoteSSHDefaults     `toml:"ssh_defaults"`
 	Cache        CacheConfig           `toml:"cache"`
 	Stages       map[string]Stage      `toml:"stages"`
 	Dependencies DepsConfig            `toml:"dependencies"`
@@ -33,8 +34,10 @@ type Config struct {
 // Lets users say `--remote-host sparky` instead of repeating
 // `--remote aivcs2@spark-bde7 --session sparky-onion --remote-dir /data/builds`.
 type RemoteHost struct {
-	// SSH spec: "user@host" or just "host". Required.
+	// Tailscale name or full user@host. Bare names expand via [ssh_defaults].
 	Host string `toml:"host"`
+	// macos (default) | linux_spark — picks user from [ssh_defaults].
+	Platform string `toml:"platform"`
 	// tmux session name; if empty, the --session flag (or its default) wins.
 	Session string `toml:"session"`
 	// Remote working directory; if empty, falls back to --remote-dir or /tmp/<basename>.
@@ -155,6 +158,9 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 			// Carry over named host presets ([hosts.*]) verbatim. These only
 			// live in the remote config file — they have no analogue in the
 			// per-project local config.
+			if remoteCfg.SSHDefaults.MacOSUser != "" || remoteCfg.SSHDefaults.LinuxSparkUser != "" {
+				cfg.SSHDefaults = remoteCfg.SSHDefaults
+			}
 			if len(remoteCfg.Hosts) > 0 {
 				if cfg.Hosts == nil {
 					cfg.Hosts = make(map[string]RemoteHost, len(remoteCfg.Hosts))
@@ -367,6 +373,7 @@ func (c *Config) GetRemoteHost(name string) (*RemoteHost, error) {
 			strings.Join(available, ", "),
 		)
 	}
+	h = c.normalizeRemoteHost(name, h)
 	if strings.TrimSpace(h.Host) == "" {
 		return nil, fmt.Errorf(
 			"remote host preset %q has empty `host` field in .local-ci-remote.toml",
@@ -400,7 +407,7 @@ func (c *Config) ListRemoteHosts() []struct {
 		Description string
 	}, 0, len(names))
 	for _, n := range names {
-		h := c.Hosts[n]
+		h := c.normalizeRemoteHost(n, c.Hosts[n])
 		out = append(out, struct {
 			Name        string
 			Host        string
@@ -442,6 +449,8 @@ func (c *Config) ResolveRemoteHost(
 	}
 	if out.Host == "" {
 		out.Host = preset.Host
+	} else if !strings.Contains(out.Host, "@") {
+		out.Host = NormalizeSSHHost(out.Host, preset.effectivePlatform(name), c.SSHDefaults)
 	}
 	if !userSetSession && preset.Session != "" {
 		out.Session = preset.Session

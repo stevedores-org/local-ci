@@ -338,14 +338,20 @@ func TestDefaultStagesHaveCorrectProperties(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 const sampleRemoteTomlWithHosts = `
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
 [hosts.sparky]
-host = "aivcs2@spark-bde7"
+host = "spark-bde7"
+platform = "linux_spark"
 session = "sparky-onion"
 remote_dir = "/data/builds/local-ci"
 description = "DGX Spark — ARM64 + Blackwell"
 
 [hosts.studio]
-host = "aivcs@downhome"
+host = "downhome"
+platform = "macos"
 `
 
 func writeRemoteTomlWithHosts(t *testing.T, body string) string {
@@ -373,8 +379,11 @@ func TestRemoteHostsParseFromTOML(t *testing.T) {
 	if !ok {
 		t.Fatal("expected hosts.sparky to be parsed")
 	}
-	if h.Host != "aivcs2@spark-bde7" {
-		t.Errorf("Host: got %q, want aivcs2@spark-bde7", h.Host)
+	if h.Host != "spark-bde7" {
+		t.Errorf("Host: got %q, want spark-bde7 (bare tailnet name in config)", h.Host)
+	}
+	if h.Platform != remotePlatformLinuxSpark {
+		t.Errorf("Platform: got %q, want linux_spark", h.Platform)
 	}
 	if h.Session != "sparky-onion" {
 		t.Errorf("Session: got %q, want sparky-onion", h.Session)
@@ -395,7 +404,7 @@ func TestRemoteHostsLookup_Found(t *testing.T) {
 		t.Fatalf("GetRemoteHost: %v", err)
 	}
 	if h.Host != "aivcs2@spark-bde7" {
-		t.Errorf("Host: got %q, want aivcs2@spark-bde7", h.Host)
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7 (normalized from bare spark-bde7)", h.Host)
 	}
 }
 
