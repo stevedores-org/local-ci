@@ -27,12 +27,12 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypeRust
 	}
 
-	// Check for Node.js/TypeScript project files
+	// Check for Node.js/TypeScript project files. A package.json is a
+	// definitive Node marker and must take precedence over the Python/Swift
+	// markers a Node repo may also carry (e.g. a JS frontend that ships
+	// requirements.txt for tooling, or a Package.swift alongside a bundler).
 	if fileExists(filepath.Join(root, "package.json")) {
-		// Optimization: if it's package.json but also has TS indicators
-		if DetectProjectKind(root) == ProjectKindTypeScript {
-			return ProjectTypeNode
-		}
+		return ProjectTypeNode
 	}
 
 	// Check for Swift project files
@@ -58,11 +58,6 @@ func DetectProjectType(root string) ProjectType {
 		fileExists(filepath.Join(root, "setup.py")) ||
 		fileExists(filepath.Join(root, "requirements.txt")) {
 		return ProjectTypePython
-	}
-
-	// Check for Node.js project files (fallback)
-	if fileExists(filepath.Join(root, "package.json")) {
-		return ProjectTypeNode
 	}
 
 	// Check for Go project files
