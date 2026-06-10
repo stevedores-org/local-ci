@@ -517,15 +517,23 @@ Sample schema:
 
 ## Remote execution
 
-SSH+tmux remote runs and named host presets are documented in [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md).
+Run expensive stages (clippy, test) on remote hardware via SSH+tmux **before pushing** — keeps GitHub Actions minutes for PR gates only. See [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md) for full setup.
 
 ```bash
-# Named preset from ~/.local-ci-remote.toml or project .local-ci-remote.toml
-local-ci --remote-host aivcs2
+# Direct SSH target (issue #61 flags)
+local-ci --remote aivcs@discovery.local --session onion --remote-dir /tmp/my-project fmt clippy test
+local-ci --remote aivcs@100.81.115.15 --remote-timeout 60 test   # uranus.local
 
-# List configured presets
+# Named presets from .local-ci-remote.toml (includes discovery + uranus)
+local-ci --remote-host discovery
+local-ci --remote-host uranus
 local-ci --list-remote-hosts
+
+# Plan a remote run without executing
+local-ci --remote-host discovery --dry-run
 ```
+
+Flags: `--remote`, `--session`, `--remote-dir`, `--remote-timeout`, `--remote-host`, `--list-remote-hosts`.
 
 ## MCP server
 
