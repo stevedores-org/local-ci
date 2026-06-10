@@ -49,6 +49,32 @@ func TestDetectProjectTypeNode(t *testing.T) {
 	}
 }
 
+func TestDetectProjectTypeNodeBeatsPythonMarkers(t *testing.T) {
+	tmpdir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte(`{"name":"app"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpdir, "requirements.txt"), []byte("pytest\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
+		t.Fatalf("expected ProjectTypeNode when package.json + requirements.txt, got %s", got)
+	}
+}
+
+func TestDetectProjectTypeNodeBeatsSwiftMarker(t *testing.T) {
+	tmpdir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte(`{"name":"app"}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(tmpdir, "Package.swift"), []byte("// swift tools\n"), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
+		t.Fatalf("expected ProjectTypeNode when package.json + Package.swift, got %s", got)
+	}
+}
+
 // TestDetectProjectTypeGo verifies Go project detection
 func TestDetectProjectTypeGo(t *testing.T) {
 	tmpdir := t.TempDir()
