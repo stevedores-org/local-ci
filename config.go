@@ -158,7 +158,7 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 			// Carry over named host presets ([hosts.*]) verbatim. These only
 			// live in the remote config file — they have no analogue in the
 			// per-project local config.
-			if remoteCfg.SSHDefaults.MacOSUser != "" || remoteCfg.SSHDefaults.LinuxSparkUser != "" {
+			if remoteCfg.SSHDefaults.MacOSUser != "" || remoteCfg.SSHDefaults.LinuxSparkUser != "" || remoteCfg.SSHDefaults.WindowsUser != "" {
 				cfg.SSHDefaults = remoteCfg.SSHDefaults
 			}
 			if len(remoteCfg.Hosts) > 0 {

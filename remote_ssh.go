@@ -6,11 +6,13 @@ import "strings"
 type RemoteSSHDefaults struct {
 	MacOSUser      string `toml:"macos_user"`
 	LinuxSparkUser string `toml:"linux_spark_user"`
+	WindowsUser    string `toml:"windows_user"`
 }
 
 const (
 	remotePlatformMacOS      = "macos"
 	remotePlatformLinuxSpark = "linux_spark"
+	remotePlatformWindows    = "windows"
 )
 
 func (d RemoteSSHDefaults) withDefaults() RemoteSSHDefaults {
@@ -20,6 +22,9 @@ func (d RemoteSSHDefaults) withDefaults() RemoteSSHDefaults {
 	}
 	if strings.TrimSpace(out.LinuxSparkUser) == "" {
 		out.LinuxSparkUser = "aivcs2"
+	}
+	if strings.TrimSpace(out.WindowsUser) == "" {
+		out.WindowsUser = "aivcs"
 	}
 	return out
 }
@@ -33,8 +38,11 @@ func NormalizeSSHHost(host, platform string, defaults RemoteSSHDefaults) string 
 	}
 	d := defaults.withDefaults()
 	user := d.MacOSUser
-	if platform == remotePlatformLinuxSpark {
+	switch platform {
+	case remotePlatformLinuxSpark:
 		user = d.LinuxSparkUser
+	case remotePlatformWindows:
+		user = d.WindowsUser
 	}
 	return user + "@" + host
 }
@@ -47,6 +55,8 @@ func (h RemoteHost) effectivePlatform(presetName string) string {
 	switch presetName {
 	case "sparky", "aivcs2":
 		return remotePlatformLinuxSpark
+	case "msi":
+		return remotePlatformWindows
 	default:
 		return remotePlatformMacOS
 	}

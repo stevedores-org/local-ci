@@ -519,7 +519,7 @@ Sample schema:
 
 Run expensive stages (clippy, test) on remote hardware via **Tailscale + SSH+tmux** before pushing — keeps GitHub Actions minutes for PR gates only. See [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md) for full setup.
 
-**Prerequisite:** nodes in `tailscale status`. SSH users are codified in [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md) — `aivcs` on macOS, `aivcs2` on Spark.
+**Prerequisite:** nodes in `tailscale status`. SSH identity: [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md) — fleet is uranus, discovery, downhome (macOS), spark-bde7 (Linux), **msi** (Windows 11 / RTX 5070, offline when logged out).
 
 ```bash
 tailscale ping uranus

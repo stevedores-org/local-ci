@@ -6,6 +6,7 @@
 [ssh_defaults]
 macos_user = "aivcs"
 linux_spark_user = "aivcs2"
+windows_user = "aivcs"
 
 # Named presets — host is bare tailnet name; user comes from [ssh_defaults].
 
@@ -36,6 +37,11 @@ platform    = "macos"
 host        = "downhome"
 platform    = "macos"
 description = "This Mac on tailnet"
+
+[hosts.msi]
+host        = "msi"
+platform    = "windows"
+description = "Windows 11 + RTX 5070 — offline when logged out; OpenSSH + WSL/tmux for remote-ci"
 
 [cache]
 cache_dir = ".local-ci-cache-remote"

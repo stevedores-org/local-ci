@@ -2,6 +2,42 @@ package main
 
 import "testing"
 
+func TestNormalizeSSHHost_BareWindows(t *testing.T) {
+	got := NormalizeSSHHost("msi", remotePlatformWindows, RemoteSSHDefaults{})
+	if got != "aivcs@msi" {
+		t.Fatalf("got %q", got)
+	}
+}
+
+func TestRemoteHostEffectivePlatform_MSI(t *testing.T) {
+	h := RemoteHost{}
+	if h.effectivePlatform("msi") != remotePlatformWindows {
+		t.Fatal("msi preset should imply windows")
+	}
+}
+
+func TestGetRemoteHost_NormalizesMSI(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, `
+[ssh_defaults]
+windows_user = "aivcs"
+
+[hosts.msi]
+host = "msi"
+platform = "windows"
+`)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := cfg.GetRemoteHost("msi")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if h.Host != "aivcs@msi" {
+		t.Fatalf("got %q", h.Host)
+	}
+}
+
 func TestNormalizeSSHHost_BareMacOS(t *testing.T) {
 	got := NormalizeSSHHost("uranus", remotePlatformMacOS, RemoteSSHDefaults{})
 	if got != "aivcs@uranus" {
