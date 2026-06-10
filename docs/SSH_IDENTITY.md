@@ -37,6 +37,8 @@ tailscale ping downhome
 
 Alias: `studio` → `downhome`.
 
+## Policy
+
 | Platform | Canonical user | Scope |
 |----------|----------------|-------|
 | **macOS** (tailnet) | `aivcs` | `downhome`, `uranus`, `discovery`, all macOS nodes |
