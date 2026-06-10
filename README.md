@@ -517,20 +517,25 @@ Sample schema:
 
 ## Remote execution
 
-Run expensive stages (clippy, test) on remote hardware via SSH+tmux **before pushing** — keeps GitHub Actions minutes for PR gates only. See [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md) for full setup.
+Run expensive stages (clippy, test) on remote hardware via **Tailscale + SSH+tmux** before pushing — keeps GitHub Actions minutes for PR gates only. See [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md) for full setup.
+
+**Prerequisite:** nodes must appear in `tailscale status` (e.g. `uranus`, `discovery`). Use MagicDNS short names — not `.local` mDNS.
 
 ```bash
-# Direct SSH target (issue #61 flags)
-local-ci --remote aivcs@discovery.local --session onion --remote-dir /tmp/my-project fmt clippy test
-local-ci --remote aivcs@100.81.115.15 --remote-timeout 60 test   # uranus.local
+tailscale status          # verify uranus / discovery are online
+tailscale ping uranus     # quick reachability check
 
-# Named presets from .local-ci-remote.toml (includes discovery + uranus)
-local-ci --remote-host discovery
+# Direct SSH target (Tailscale MagicDNS)
+local-ci --remote aivcs@uranus --session onion fmt clippy test
+local-ci --remote aivcs@discovery --remote-timeout 60 test
+
+# Named presets from .local-ci-remote.toml
 local-ci --remote-host uranus
+local-ci --remote-host discovery
 local-ci --list-remote-hosts
 
-# Plan a remote run without executing
-local-ci --remote-host discovery --dry-run
+# Plan without executing
+local-ci --remote-host uranus --dry-run
 ```
 
 Flags: `--remote`, `--session`, `--remote-dir`, `--remote-timeout`, `--remote-host`, `--list-remote-hosts`.

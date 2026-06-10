@@ -254,11 +254,11 @@ func TestRemoteStageExecutionFailure(t *testing.T) {
 func TestIssue61HostPresetsDiscoveryAndUranus(t *testing.T) {
 	dir := t.TempDir()
 	example := `[hosts.discovery]
-host = "aivcs@discovery.local"
+host = "aivcs@discovery"
 
 [hosts.uranus]
-host = "aivcs@100.81.115.15"
-description = "uranus.local via Tailscale"
+host = "aivcs@uranus"
+description = "Tailscale macOS node"
 `
 	if err := os.WriteFile(filepath.Join(dir, ".local-ci-remote.toml"), []byte(example), 0644); err != nil {
 		t.Fatal(err)
@@ -283,7 +283,7 @@ description = "uranus.local via Tailscale"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if discovery.Host != "aivcs@discovery.local" {
+	if discovery.Host != "aivcs@discovery" {
 		t.Errorf("discovery host: got %q", discovery.Host)
 	}
 
@@ -291,7 +291,7 @@ description = "uranus.local via Tailscale"
 	if err != nil {
 		t.Fatal(err)
 	}
-	if uranus.Host != "aivcs@100.81.115.15" {
+	if uranus.Host != "aivcs@uranus" {
 		t.Errorf("uranus host: got %q", uranus.Host)
 	}
 }

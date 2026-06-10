@@ -383,6 +383,34 @@ $ # Still in tmux session 'onion'
 $ cargo build  # Run manual commands after CI
 ```
 
+## Tailscale (required for cluster nodes)
+
+Remote CI targets (`uranus`, `discovery`, `spark-bde7`, etc.) are reached over the **Tailscale tailnet**, not LAN mDNS (`.local`) or public IPs.
+
+```bash
+# 1. Confirm tailnet connectivity
+tailscale status
+tailscale ping uranus
+tailscale ping discovery
+
+# 2. SSH must work over MagicDNS (install your pubkey on the remote, or use Tailscale SSH)
+ssh aivcs@uranus echo ok
+# Alternative when Tailscale SSH ACLs are configured:
+# tailscale ssh uranus echo ok
+
+# 3. Run local-ci against a preset or explicit host
+local-ci --remote-host uranus fmt clippy test
+local-ci --remote aivcs@discovery --session onion test
+```
+
+| Node | Tailscale name | Tailscale IP | Notes |
+|------|----------------|-------------|-------|
+| uranus | `uranus` | `100.81.115.15` | macOS; SSH on port 22 |
+| discovery | `discovery` | `100.103.163.28` | macOS; enable **Remote Login** in System Settings if SSH is refused |
+| DGX Spark | `spark-bde7` | `100.124.89.47` | Linux; use `[hosts.aivcs2]` preset pattern |
+
+Use **`aivcs@<tailscale-name>`** in `.local-ci-remote.toml` — not `*.local` hostnames.
+
 ## Named Host Presets
 
 If you regularly target the same nodes, define `[hosts.<name>]` entries in

@@ -26,11 +26,12 @@ host        = "aivcs@aivcs.local"
 description = "Mac Studio M2 Ultra"
 
 [hosts.discovery]
-host        = "aivcs@discovery.local"
+host        = "aivcs@discovery"
+description = "Tailscale macOS node — MagicDNS (100.103.163.28); enable Remote Login"
 
 [hosts.uranus]
-host        = "aivcs@100.81.115.15"
-description = "uranus.local via Tailscale"
+host        = "aivcs@uranus"
+description = "Tailscale macOS node — MagicDNS (100.81.115.15)"
 
 [cache]
 # Remote cache directory (relative to project root)
@@ -48,14 +49,8 @@ timeout = 900  # increased from 600
 
 [stages.test]
 timeout = 1800  # increased from 1200
+# Optional: export CARGO_TEST_THREADS=4 for parallelism on powerful nodes
 
 # Example: disable deny stage on remote (security check redundant with CI)
 [stages.deny]
 enabled = false
-
-# Example: increase test parallelism on powerful Mac Studio
-[stages.test]
-# Note: command array syntax still applies
-# To use environment variable for job count:
-# export CARGO_TEST_THREADS=4
-# local-ci --remote aivcs@studio test
