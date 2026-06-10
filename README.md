@@ -517,15 +517,20 @@ Sample schema:
 
 ## Remote execution
 
-SSH+tmux remote runs and named host presets are documented in [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md).
+Run expensive stages on remote nodes **in Tailscale** before pushing — keeps GitHub Actions minutes for PR gates only. **`downhome`** is this Mac (`aivcs`). Fleet map: [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md) → **In Tailscale**.
 
 ```bash
-# Named preset from ~/.local-ci-remote.toml or project .local-ci-remote.toml
-local-ci --remote-host aivcs2
+tailscale status
+tailscale ping uranus
+ssh aivcs@uranus echo ok
+ssh aivcs2@spark-bde7 echo ok
 
-# List configured presets
+local-ci --remote-host uranus fmt clippy test
+local-ci --remote-host sparky test
 local-ci --list-remote-hosts
 ```
+
+Flags: `--remote`, `--session`, `--remote-dir`, `--remote-timeout`, `--remote-host`, `--list-remote-hosts`.
 
 ## MCP server
 

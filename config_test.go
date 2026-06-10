@@ -338,14 +338,20 @@ func TestDefaultStagesHaveCorrectProperties(t *testing.T) {
 // ---------------------------------------------------------------------------
 
 const sampleRemoteTomlWithHosts = `
-[hosts.aivcs2]
-host = "aivcs@aivcs2"
-session = "aivcs2-onion"
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
+[hosts.sparky]
+host = "spark-bde7"
+platform = "linux_spark"
+session = "sparky-onion"
 remote_dir = "/data/builds/local-ci"
 description = "DGX Spark — ARM64 + Blackwell"
 
 [hosts.studio]
-host = "aivcs@aivcs.local"
+host = "downhome"
+platform = "macos"
 `
 
 func writeRemoteTomlWithHosts(t *testing.T, body string) string {
@@ -369,15 +375,18 @@ func TestRemoteHostsParseFromTOML(t *testing.T) {
 	if len(cfg.Hosts) != 2 {
 		t.Fatalf("expected 2 hosts, got %d: %#v", len(cfg.Hosts), cfg.Hosts)
 	}
-	h, ok := cfg.Hosts["aivcs2"]
+	h, ok := cfg.Hosts["sparky"]
 	if !ok {
-		t.Fatal("expected hosts.aivcs2 to be parsed")
+		t.Fatal("expected hosts.sparky to be parsed")
 	}
-	if h.Host != "aivcs@aivcs2" {
-		t.Errorf("Host: got %q, want aivcs@aivcs2", h.Host)
+	if h.Host != "spark-bde7" {
+		t.Errorf("Host: got %q, want spark-bde7 (bare tailnet name in config)", h.Host)
 	}
-	if h.Session != "aivcs2-onion" {
-		t.Errorf("Session: got %q, want aivcs2-onion", h.Session)
+	if h.Platform != remotePlatformLinuxSpark {
+		t.Errorf("Platform: got %q, want linux_spark", h.Platform)
+	}
+	if h.Session != "sparky-onion" {
+		t.Errorf("Session: got %q, want sparky-onion", h.Session)
 	}
 	if h.RemoteDir != "/data/builds/local-ci" {
 		t.Errorf("RemoteDir: got %q, want /data/builds/local-ci", h.RemoteDir)
@@ -390,12 +399,12 @@ func TestRemoteHostsLookup_Found(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	h, err := cfg.GetRemoteHost("aivcs2")
+	h, err := cfg.GetRemoteHost("sparky")
 	if err != nil {
 		t.Fatalf("GetRemoteHost: %v", err)
 	}
-	if h.Host != "aivcs@aivcs2" {
-		t.Errorf("Host: got %q, want aivcs@aivcs2", h.Host)
+	if h.Host != "aivcs2@spark-bde7" {
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7 (normalized from bare spark-bde7)", h.Host)
 	}
 }
 
@@ -411,7 +420,7 @@ func TestRemoteHostsLookup_NotFound(t *testing.T) {
 	}
 	// Error should mention the available host names so users know what's defined.
 	msg := err.Error()
-	for _, name := range []string{"aivcs2", "studio"} {
+	for _, name := range []string{"sparky", "studio"} {
 		if !strings.Contains(msg, name) {
 			t.Errorf("error message should list available host %q; got: %s", name, msg)
 		}
@@ -442,7 +451,7 @@ func TestResolveRemoteHost_FlagBeatsPreset(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 	// User explicitly passed --session experiment + --remote-dir /alt.
-	got, err := cfg.ResolveRemoteHost("aivcs2",
+	got, err := cfg.ResolveRemoteHost("sparky",
 		"",           // no --remote → preset host wins
 		"experiment", // explicit --session → wins over preset
 		"/alt",       // explicit --remote-dir → wins over preset
@@ -450,8 +459,8 @@ func TestResolveRemoteHost_FlagBeatsPreset(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRemoteHost: %v", err)
 	}
-	if got.Host != "aivcs@aivcs2" {
-		t.Errorf("Host: got %q, want aivcs@aivcs2", got.Host)
+	if got.Host != "aivcs2@spark-bde7" {
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7", got.Host)
 	}
 	if got.Session != "experiment" {
 		t.Errorf("Session: got %q, want experiment (CLI override)", got.Session)
@@ -468,7 +477,7 @@ func TestResolveRemoteHost_PresetFillsUnsetFlags(t *testing.T) {
 		t.Fatalf("LoadConfig: %v", err)
 	}
 	// User passed no overrides; --session was left at its default "onion".
-	got, err := cfg.ResolveRemoteHost("aivcs2",
+	got, err := cfg.ResolveRemoteHost("sparky",
 		"",      // no --remote
 		"onion", // default --session value
 		"",      // no --remote-dir
@@ -476,11 +485,11 @@ func TestResolveRemoteHost_PresetFillsUnsetFlags(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ResolveRemoteHost: %v", err)
 	}
-	if got.Host != "aivcs@aivcs2" {
-		t.Errorf("Host: got %q, want aivcs@aivcs2", got.Host)
+	if got.Host != "aivcs2@spark-bde7" {
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7", got.Host)
 	}
-	if got.Session != "aivcs2-onion" {
-		t.Errorf("Session: got %q, want aivcs2-onion (preset)", got.Session)
+	if got.Session != "sparky-onion" {
+		t.Errorf("Session: got %q, want sparky-onion (preset)", got.Session)
 	}
 	if got.RemoteDir != "/data/builds/local-ci" {
 		t.Errorf("RemoteDir: got %q, want /data/builds/local-ci (preset)", got.RemoteDir)
@@ -495,7 +504,7 @@ func TestResolveRemoteHost_ExplicitDefaultStillWins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	got, err := cfg.ResolveRemoteHost("aivcs2", "", "onion", "",
+	got, err := cfg.ResolveRemoteHost("sparky", "", "onion", "",
 		true /* userSetSession */, false)
 	if err != nil {
 		t.Fatalf("ResolveRemoteHost: %v", err)
@@ -511,7 +520,7 @@ func TestResolveRemoteHost_RemoteFlagBeatsPresetHost(t *testing.T) {
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	got, err := cfg.ResolveRemoteHost("aivcs2",
+	got, err := cfg.ResolveRemoteHost("sparky",
 		"other@elsewhere", "", "", false, false)
 	if err != nil {
 		t.Fatalf("ResolveRemoteHost: %v", err)
@@ -531,8 +540,8 @@ func TestListRemoteHosts_Sorted(t *testing.T) {
 	if len(got) != 2 {
 		t.Fatalf("expected 2 hosts, got %d", len(got))
 	}
-	if got[0].Name != "aivcs2" || got[1].Name != "studio" {
-		t.Fatalf("expected sorted aivcs2, studio; got %#v", got)
+	if got[0].Name != "sparky" || got[1].Name != "studio" {
+		t.Fatalf("expected sorted sparky, studio; got %#v", got)
 	}
 }
 
@@ -547,7 +556,7 @@ enabled = true
 	if err != nil {
 		t.Fatalf("LoadConfig: %v", err)
 	}
-	_, err = cfg.GetRemoteHost("aivcs2")
+	_, err = cfg.GetRemoteHost("sparky")
 	if err == nil {
 		t.Fatal("expected error when no presets exist, got nil")
 	}

@@ -413,7 +413,20 @@ func main() {
 
 	// Handle dry-run mode
 	if *flagDryRun {
-		report := BuildDryRunReport(stages, cache, sourceHash, *flagNoCache)
+		var remote *DryRunRemote
+		if *flagRemote != "" {
+			workDir := *flagRemoteDir
+			if workDir == "" {
+				workDir = filepath.Join("/tmp", filepath.Base(cwd))
+			}
+			remote = &DryRunRemote{
+				Host:       *flagRemote,
+				Session:    *flagSession,
+				WorkDir:    workDir,
+				HostPreset: *flagRemoteHost,
+			}
+		}
+		report := BuildDryRunReport(stages, cache, sourceHash, *flagNoCache, remote)
 		if *flagJSON {
 			PrintDryRunJSON(report)
 		} else {

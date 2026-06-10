@@ -383,6 +383,24 @@ $ # Still in tmux session 'onion'
 $ cargo build  # Run manual commands after CI
 ```
 
+## Tailscale (required for cluster nodes)
+
+Remote CI targets are on the **Tailscale tailnet**. SSH users are unified — see **[docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md)**:
+
+- **macOS** → `aivcs@<tailnet-name>`
+- **DGX Spark** → `aivcs2@spark-bde7` (`--remote-host sparky`)
+
+```bash
+tailscale status
+ssh aivcs@uranus echo ok
+ssh aivcs2@spark-bde7 echo ok
+
+local-ci --remote-host sparky fmt clippy test
+local-ci --remote-host uranus --dry-run
+```
+
+Presets use bare tailnet names; `[ssh_defaults]` in `.local-ci-remote.toml` supplies the user.
+
 ## Named Host Presets
 
 If you regularly target the same nodes, define `[hosts.<name>]` entries in
@@ -391,19 +409,23 @@ If you regularly target the same nodes, define `[hosts.<name>]` entries in
 on every invocation:
 
 ```toml
-[hosts.aivcs2]
-host        = "aivcs@aivcs2"
-session     = "aivcs2-onion"
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
+[hosts.sparky]
+host        = "spark-bde7"
+platform    = "linux_spark"
+session     = "sparky-onion"
 remote_dir  = "/data/builds/local-ci"
-description = "DGX Spark — Grace+Blackwell, ARM64"
 ```
 
 ```bash
-# Equivalent to: local-ci --remote aivcs@aivcs2 --session aivcs2-onion --remote-dir /data/builds/local-ci
-local-ci --remote-host aivcs2
+local-ci --remote-host sparky   # → aivcs2@spark-bde7
+```
 
 # Mix-and-match: reuse the host preset but override session for this run
-local-ci --remote-host aivcs2 --session experiment
+local-ci --remote-host sparky --session experiment
 ```
 
 Precedence: an explicit CLI flag (`--remote`, `--session`, `--remote-dir`)
@@ -411,16 +433,9 @@ always wins over the preset's value. The preset only fills in fields that
 the user did not pass. Unknown preset names produce an error listing the
 ones that *are* defined.
 
-### DGX Spark (aivcs2) notes
+### DGX Spark (sparky / spark-bde7) notes
 
-- Architecture is `aarch64-unknown-linux-gnu`; building large Rust workspaces
-  benefits from a local toolchain (`rustup default stable-aarch64`) and a
-  warmed `~/.cargo/registry` on the same SSD as `remote_dir`.
-- CUDA-aware crates can pick up the Blackwell SM via `CUDA_PATH` and
-  `LD_LIBRARY_PATH`; set those in the tmux session or via a stage-level
-  environment override.
-- Pair with Tailscale + `autossh` (see the Quick Start) for a stable
-  long-lived tmux session that survives roaming between networks.
+- SSH as **`aivcs2@spark-bde7`** — not `aivcs`. Preset: `--remote-host sparky` (alias: `--remote-host aivcs2`).
 
 ## Security Considerations
 
