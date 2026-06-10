@@ -131,13 +131,13 @@ func TestBuildDryRunReportEmptyStages(t *testing.T) {
 
 func TestBuildDryRunReportRemoteTarget(t *testing.T) {
 	remote := &DryRunRemote{
-		Host:       "aivcs@discovery.local",
+		Host:       "aivcs@discovery",
 		Session:    "onion",
 		WorkDir:    "/tmp/local-ci",
 		HostPreset: "discovery",
 	}
 	report := BuildDryRunReport(nil, nil, "hash", false, remote)
-	if report.Remote == nil || report.Remote.Host != "aivcs@discovery.local" {
+	if report.Remote == nil || report.Remote.Host != "aivcs@discovery" {
 		t.Fatalf("expected remote target in report: %+v", report.Remote)
 	}
 }

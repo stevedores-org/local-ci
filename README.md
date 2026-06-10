@@ -527,10 +527,12 @@ tailscale ping uranus     # quick reachability check
 
 # Direct SSH target (Tailscale MagicDNS)
 local-ci --remote aivcs@uranus --session onion fmt clippy test
-local-ci --remote aivcs@discovery --remote-timeout 60 test
+local-ci --remote stevenirvin@discovery test
+local-ci --remote aivcs2@spark-bde7 --session sparky-onion test   # Spark Linux user
 
 # Named presets from .local-ci-remote.toml
-local-ci --remote-host uranus
+local-ci --remote-host sparky      # aivcs2@spark-bde7
+local-ci --remote-host uranus      # aivcs@uranus (or stevenirvin@uranus in config)
 local-ci --remote-host discovery
 local-ci --list-remote-hosts
 

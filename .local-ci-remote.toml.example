@@ -1,56 +1,53 @@
 # .local-ci-remote.toml — Remote-specific configuration overrides
 #
-# This file allows you to override .local-ci.toml settings when running
-# builds on a remote machine via `local-ci --remote aivcs@studio`
+# Reach cluster nodes over Tailscale MagicDNS (see REMOTE_CI_SETUP.md).
+# Copy to ~/.local-ci-remote.toml or project root.
 #
-# Common use cases:
-# - Increase timeouts for slower remote machines
-# - Disable stages that don't work remotely
-# - Use different caching directory on shared storage
-# - Skip stages that are redundant with CI
-# - Define named host presets so callers can write
-#     local-ci --remote-host aivcs2
-#   instead of repeating the full ssh spec, session, and remote dir.
+# SSH users:
+#   macOS nodes (discovery, uranus, …) → aivcs or stevenirvin
+#   DGX Spark (spark-bde7 / sparky)     → aivcs2
 
 # Named SSH+tmux targets. Reference with `local-ci --remote-host <name>`.
 # Required: host. Optional: session, remote_dir, description.
 
-[hosts.aivcs2]
-host        = "aivcs@aivcs2"
-session     = "aivcs2-onion"
+[hosts.sparky]
+host        = "aivcs2@spark-bde7"
+session     = "sparky-onion"
 remote_dir  = "/data/builds/local-ci"
-description = "DGX Spark — Grace+Blackwell, ARM64"
+description = "DGX Spark — Grace+Blackwell, ARM64 (Linux user: aivcs2)"
 
-[hosts.studio]
-host        = "aivcs@aivcs.local"
-description = "Mac Studio M2 Ultra"
+# Back-compat alias for scripts that still pass --remote-host aivcs2
+[hosts.aivcs2]
+host        = "aivcs2@spark-bde7"
+session     = "sparky-onion"
+remote_dir  = "/data/builds/local-ci"
+description = "alias for sparky preset"
 
 [hosts.discovery]
 host        = "aivcs@discovery"
-description = "Tailscale macOS node — MagicDNS (100.103.163.28); enable Remote Login"
+description = "Tailscale macOS — use stevenirvin@discovery if that is your account"
 
 [hosts.uranus]
 host        = "aivcs@uranus"
-description = "Tailscale macOS node — MagicDNS (100.81.115.15)"
+description = "Tailscale macOS — use stevenirvin@uranus if that is your account"
+
+[hosts.studio]
+host        = "aivcs@downhome"
+description = "This Mac / downhome on tailnet (override user to stevenirvin if needed)"
 
 [cache]
-# Remote cache directory (relative to project root)
-# If unset, uses .local-ci-cache-remote
 cache_dir = ".local-ci-cache-remote"
 skip_dirs = [".git", "target", ".github", "scripts", ".claude"]
 include_patterns = ["*.rs", "*.toml"]
 
-# Override timeouts for slower remote machine
 [stages.fmt]
-timeout = 180  # increased from 120
+timeout = 180
 
 [stages.clippy]
-timeout = 900  # increased from 600
+timeout = 900
 
 [stages.test]
-timeout = 1800  # increased from 1200
-# Optional: export CARGO_TEST_THREADS=4 for parallelism on powerful nodes
+timeout = 1800
 
-# Example: disable deny stage on remote (security check redundant with CI)
 [stages.deny]
 enabled = false

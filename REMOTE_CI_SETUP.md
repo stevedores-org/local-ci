@@ -399,17 +399,21 @@ ssh aivcs@uranus echo ok
 # tailscale ssh uranus echo ok
 
 # 3. Run local-ci against a preset or explicit host
-local-ci --remote-host uranus fmt clippy test
-local-ci --remote aivcs@discovery --session onion test
+local-ci --remote-host sparky fmt clippy test    # aivcs2@spark-bde7
+local-ci --remote-host uranus fmt clippy test    # aivcs@uranus
+local-ci --remote stevenirvin@discovery test     # alternate macOS user
 ```
 
-| Node | Tailscale name | Tailscale IP | Notes |
-|------|----------------|-------------|-------|
-| uranus | `uranus` | `100.81.115.15` | macOS; SSH on port 22 |
-| discovery | `discovery` | `100.103.163.28` | macOS; enable **Remote Login** in System Settings if SSH is refused |
-| DGX Spark | `spark-bde7` | `100.124.89.47` | Linux; use `[hosts.aivcs2]` preset pattern |
+| Node | Tailscale name | SSH user | Example host string |
+|------|----------------|----------|---------------------|
+| uranus | `uranus` | `aivcs` or `stevenirvin` | `aivcs@uranus` |
+| discovery | `discovery` | `aivcs` or `stevenirvin` | `aivcs@discovery` |
+| DGX Spark (sparky) | `spark-bde7` | **`aivcs2`** | `aivcs2@spark-bde7` |
+| downhome (studio) | `downhome` | `aivcs` or `stevenirvin` | `aivcs@downhome` |
 
-Use **`aivcs@<tailscale-name>`** in `.local-ci-remote.toml` — not `*.local` hostnames.
+macOS nodes share two operator accounts (**`aivcs`**, **`stevenirvin`**). Spark uses a dedicated Linux account **`aivcs2`**. Pick the user that has your SSH key in `authorized_keys`.
+
+Use **`user@<tailscale-name>`** in `.local-ci-remote.toml` — not `*.local` mDNS hostnames.
 
 ## Named Host Presets
 
@@ -419,19 +423,19 @@ If you regularly target the same nodes, define `[hosts.<name>]` entries in
 on every invocation:
 
 ```toml
-[hosts.aivcs2]
-host        = "aivcs@aivcs2"
-session     = "aivcs2-onion"
+[hosts.sparky]
+host        = "aivcs2@spark-bde7"
+session     = "sparky-onion"
 remote_dir  = "/data/builds/local-ci"
-description = "DGX Spark — Grace+Blackwell, ARM64"
+description = "DGX Spark — Linux user aivcs2"
 ```
 
 ```bash
-# Equivalent to: local-ci --remote aivcs@aivcs2 --session aivcs2-onion --remote-dir /data/builds/local-ci
-local-ci --remote-host aivcs2
+# Equivalent to: local-ci --remote aivcs2@spark-bde7 --session sparky-onion --remote-dir /data/builds/local-ci
+local-ci --remote-host sparky
 
 # Mix-and-match: reuse the host preset but override session for this run
-local-ci --remote-host aivcs2 --session experiment
+local-ci --remote-host sparky --session experiment
 ```
 
 Precedence: an explicit CLI flag (`--remote`, `--session`, `--remote-dir`)
@@ -439,16 +443,9 @@ always wins over the preset's value. The preset only fills in fields that
 the user did not pass. Unknown preset names produce an error listing the
 ones that *are* defined.
 
-### DGX Spark (aivcs2) notes
+### DGX Spark (sparky / spark-bde7) notes
 
-- Architecture is `aarch64-unknown-linux-gnu`; building large Rust workspaces
-  benefits from a local toolchain (`rustup default stable-aarch64`) and a
-  warmed `~/.cargo/registry` on the same SSD as `remote_dir`.
-- CUDA-aware crates can pick up the Blackwell SM via `CUDA_PATH` and
-  `LD_LIBRARY_PATH`; set those in the tmux session or via a stage-level
-  environment override.
-- Pair with Tailscale + `autossh` (see the Quick Start) for a stable
-  long-lived tmux session that survives roaming between networks.
+- SSH as **`aivcs2@spark-bde7`** — not `aivcs`. Preset: `--remote-host sparky` (alias: `--remote-host aivcs2`).
 
 ## Security Considerations
 

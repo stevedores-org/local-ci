@@ -30,8 +30,8 @@ type Config struct {
 }
 
 // RemoteHost is a named SSH+tmux target loaded from .local-ci-remote.toml.
-// Lets users say `--remote-host aivcs2` instead of repeating
-// `--remote aivcs@aivcs2 --session aivcs2-onion --remote-dir /data/builds`.
+// Lets users say `--remote-host sparky` instead of repeating
+// `--remote aivcs2@spark-bde7 --session sparky-onion --remote-dir /data/builds`.
 type RemoteHost struct {
 	// SSH spec: "user@host" or just "host". Required.
 	Host string `toml:"host"`
