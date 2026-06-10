@@ -239,11 +239,6 @@ func main() {
 			return
 		}
 	}
-	if len(args) > 0 && args[0] == "serve" {
-		if err := cmdServe(cwd); err != nil {
-			fatalf("MCP server error: %v", err)
-		}
-	}
 
 	// Load configuration. Pull the remote overlay whenever remote mode or
 	// preset listing is requested — `--remote-host` resolves [hosts.*].
@@ -304,6 +299,11 @@ func main() {
 		if *flagVerbose {
 			printf("📍 Using host preset %q → %s\n", *flagRemoteHost, *flagRemote)
 		}
+	}
+
+	// Expand bare `--remote discovery` hostnames via ssh_defaults (macOS default).
+	if *flagRemote != "" && !strings.Contains(*flagRemote, "@") {
+		*flagRemote = NormalizeSSHHost(*flagRemote, remotePlatformMacOS, config.SSHDefaults)
 	}
 
 	// Apply profile if specified
@@ -377,9 +377,16 @@ func main() {
 
 	// If --all, include disabled stages
 	if *flagAll {
-		for _, stage := range stages {
-			if !stage.Enabled {
+		if len(flag.Args()) == 0 {
+			stages = stages[:0]
+			for name, stage := range stageMap {
+				stage.Name = name
 				stage.Enabled = true
+				stages = append(stages, stage)
+			}
+		} else {
+			for i := range stages {
+				stages[i].Enabled = true
 			}
 		}
 	}
@@ -411,6 +418,11 @@ func main() {
 		cache = make(map[string]string)
 	}
 
+	stageHashes, stageHashErr := computeStageHashes(cwd, config, ws, stages)
+	if stageHashErr != nil && *flagVerbose {
+		warnf("Warning: per-stage hash computation failed: %v\n", stageHashErr)
+	}
+
 	// Handle dry-run mode
 	if *flagDryRun {
 		var remote *DryRunRemote
@@ -426,7 +438,7 @@ func main() {
 				HostPreset: *flagRemoteHost,
 			}
 		}
-		report := BuildDryRunReport(stages, cache, sourceHash, *flagNoCache, remote)
+		report := BuildDryRunReport(stages, cache, stageHashes, sourceHash, *flagNoCache, remote)
 		if *flagJSON {
 			PrintDryRunJSON(report)
 		} else {
@@ -441,6 +453,9 @@ func main() {
 
 	// Use parallel runner if requested
 	if *flagParallel > 0 {
+		if *flagRemote != "" {
+			fatalf("Cannot use --parallel and --remote together; run remote stages sequentially")
+		}
 		runner := &ParallelRunner{
 			Stages:      stages,
 			Concurrency: *flagParallel,
@@ -448,6 +463,7 @@ func main() {
 			NoCache:     *flagNoCache,
 			Cache:       cache,
 			SourceHash:  sourceHash,
+			StageHashes: stageHashes,
 			Verbose:     *flagVerbose,
 			JSON:        *flagJSON,
 			FailFast:    *flagFailFast,
@@ -486,15 +502,22 @@ func main() {
 			// Compute per-stage hash for granular caching
 			stageHash := sourceHash
 			if len(stage.Watch) > 0 {
-				var err error
-				stageHash, err = computeStageHash(stage, cwd, config, ws)
-				if err != nil && *flagVerbose {
-					warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+				if h, ok := stageHashes[stage.Name]; ok {
+					stageHash = h
+				} else {
+					var err error
+					stageHash, err = computeStageHash(stage, cwd, config, ws)
+					if err != nil {
+						if *flagVerbose {
+							warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+						}
+						stageHash = ""
+					}
 				}
 			}
 
 			// Check local cache
-			if !*flagNoCache && cache[stage.Name] == stageHash {
+			if !*flagNoCache && cacheHit(cache, stage, stageHash) {
 				if *flagVerbose {
 					printf("✓ %s (cached)\n", stage.Name)
 				}
@@ -509,6 +532,21 @@ func main() {
 
 			// Print stage header
 			printf("::group::%s\n", stage.Name)
+			if len(stage.Cmd) == 0 {
+				printf("Error: Stage has no command defined\n")
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "fail",
+					Duration: 0,
+					Error:    fmt.Errorf("no command defined"),
+				})
+				if *flagFailFast {
+					break
+				}
+				continue
+			}
 			if *flagVerbose {
 				cmdStr := strings.Join(stage.Cmd, " ")
 				printf("$ %s\n", cmdStr)
@@ -539,7 +577,7 @@ func main() {
 				printf("✓ %s (%dms)\n", stage.Name, result.Duration.Milliseconds())
 				results = append(results, result)
 				// Update cache
-				cache[stage.Name] = stageHash
+				cache[stage.Name] = cacheKeyForStage(stage, stageHash)
 			}
 		}
 	} else {
@@ -552,15 +590,22 @@ func main() {
 			// Compute per-stage hash for granular caching
 			stageHash := sourceHash
 			if len(stage.Watch) > 0 {
-				var err error
-				stageHash, err = computeStageHash(stage, cwd, config, ws)
-				if err != nil && *flagVerbose {
-					warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+				if h, ok := stageHashes[stage.Name]; ok {
+					stageHash = h
+				} else {
+					var err error
+					stageHash, err = computeStageHash(stage, cwd, config, ws)
+					if err != nil {
+						if *flagVerbose {
+							warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+						}
+						stageHash = ""
+					}
 				}
 			}
 
 			// Check cache using per-stage hash
-			if !*flagNoCache && cache[stage.Name] == stageHash {
+			if !*flagNoCache && cacheHit(cache, stage, stageHash) {
 				if *flagVerbose {
 					printf("✓ %s (cached)\n", stage.Name)
 				}
@@ -637,7 +682,7 @@ func main() {
 					Output:   out.String(),
 				})
 				// Update cache with per-stage hash
-				cache[stage.Name] = stageHash
+				cache[stage.Name] = cacheKeyForStage(stage, stageHash)
 			}
 		}
 	}
@@ -773,19 +818,7 @@ func computeSourceHash(root string, config *Config, ws *Workspace) (string, erro
 
 		// Hash files matching include patterns
 		if !d.IsDir() {
-			shouldHash := false
-			for _, pattern := range config.Cache.IncludePatterns {
-				// Simple pattern matching: *.rs, *.toml
-				if strings.HasPrefix(pattern, "*.") {
-					ext := pattern[1:] // Get .rs or .toml
-					if strings.HasSuffix(d.Name(), ext) {
-						shouldHash = true
-						break
-					}
-				}
-			}
-
-			if shouldHash {
+			if matchesPatterns(d.Name(), config.Cache.IncludePatterns) {
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return nil // Skip unreadable files
@@ -844,27 +877,7 @@ func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (
 
 		// Hash files matching watch patterns
 		if !d.IsDir() {
-			shouldHash := false
-			for _, pattern := range stage.Watch {
-				// Simple pattern matching: *.rs, *.toml
-				if strings.HasPrefix(pattern, "*.") {
-					ext := pattern[1:] // Get .rs or .toml
-					if strings.HasSuffix(d.Name(), ext) {
-						shouldHash = true
-						break
-					}
-				} else if pattern == "*" {
-					// Match all files
-					shouldHash = true
-					break
-				} else if d.Name() == pattern {
-					// Exact filename match
-					shouldHash = true
-					break
-				}
-			}
-
-			if shouldHash {
+			if matchesPatterns(d.Name(), stage.Watch) {
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return nil // Skip unreadable files
@@ -898,7 +911,7 @@ func loadCache(root string) (map[string]string, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.Split(line, ":")
+		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
 			cache[parts[0]] = parts[1]
 		}

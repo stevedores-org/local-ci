@@ -32,7 +32,7 @@ type DryRunReport struct {
 }
 
 // BuildDryRunReport creates a dry-run report for the given stages
-func BuildDryRunReport(stages []Stage, cache map[string]string, sourceHash string, noCache bool, remote *DryRunRemote) DryRunReport {
+func BuildDryRunReport(stages []Stage, cache map[string]string, stageHashes map[string]string, sourceHash string, noCache bool, remote *DryRunRemote) DryRunReport {
 	workspace, _ := os.Getwd()
 
 	var dryRunStages []DryRunStage
@@ -42,13 +42,20 @@ func BuildDryRunReport(stages []Stage, cache map[string]string, sourceHash strin
 			Command: strings.Join(stage.Cmd, " "),
 		}
 
+		hash := sourceHash
+		if stageHashes != nil {
+			if h, ok := stageHashes[stage.Name]; ok {
+				hash = h
+			}
+		}
+
 		if !stage.Enabled {
 			dryRunStage.WouldRun = false
 			dryRunStage.Reason = "disabled"
 		} else if noCache {
 			dryRunStage.WouldRun = true
 			dryRunStage.Reason = "no_cache_flag"
-		} else if cache[stage.Name] == sourceHash {
+		} else if cacheHit(cache, stage, hash) {
 			dryRunStage.WouldRun = false
 			dryRunStage.Reason = "cached"
 		} else {

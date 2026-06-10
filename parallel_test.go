@@ -112,7 +112,7 @@ func TestParallelRunnerCacheHit(t *testing.T) {
 	}
 
 	cache := map[string]string{
-		"cached": "hash123",
+		"cached": cacheKeyForStage(Stage{Name: "cached", Cmd: []string{"echo", "hello"}}, "hash123"),
 	}
 
 	pr := &ParallelRunner{
