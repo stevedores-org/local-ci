@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"fmt"
 	"os/exec"
 	"runtime"
 	"sync"
@@ -35,6 +36,7 @@ func (r *ParallelRunner) Run() []Result {
 
 	// Track stage completion for dependency resolution
 	completed := make(map[string]bool)
+	failed := false // set once any stage fails (for fail-fast)
 	var mu sync.Mutex
 
 	// Result channel for collecting results
@@ -71,24 +73,20 @@ func (r *ParallelRunner) Run() []Result {
 				time.Sleep(10 * time.Millisecond)
 			}
 
-			// Check fail-fast flag
+			// Fail-fast: if a prior stage already failed, skip this one.
+			// Mark it completed so dependents don't wait forever, and emit
+			// no result (a non-"pass" result would be counted as a failure
+			// by the summary).
 			if r.FailFast {
 				mu.Lock()
-				if len(resultChan) > 0 {
-					// Check if any result is a failure
-					for result := range resultChan {
-						if result.Status != "pass" {
-							mu.Unlock()
-							mu.Lock()
-							completed[s.Name] = true
-							mu.Unlock()
-							resultChan <- result // Put it back
-							return
-						}
-						resultChan <- result // Put it back
-					}
-				}
+				skip := failed
 				mu.Unlock()
+				if skip {
+					mu.Lock()
+					completed[s.Name] = true
+					mu.Unlock()
+					return
+				}
 			}
 
 			// Acquire semaphore
@@ -99,8 +97,11 @@ func (r *ParallelRunner) Run() []Result {
 			result := r.executeStage(s)
 			resultChan <- result
 
-			// Mark as completed
+			// Record completion and failure state
 			mu.Lock()
+			if result.Status != "pass" {
+				failed = true
+			}
 			completed[s.Name] = true
 			mu.Unlock()
 		}(stage)
@@ -129,6 +130,16 @@ func (r *ParallelRunner) Run() []Result {
 // executeStage runs a single stage
 func (r *ParallelRunner) executeStage(stage Stage) Result {
 	stageStart := time.Now()
+
+	// Guard against a stage with no command (mirrors the sequential path);
+	// indexing stage.Cmd[0] below would otherwise panic.
+	if len(stage.Cmd) == 0 {
+		return Result{
+			Name:   stage.Name,
+			Status: "fail",
+			Error:  fmt.Errorf("no command defined for stage %q", stage.Name),
+		}
+	}
 
 	// Check cache
 	if !r.NoCache && r.Cache[stage.Name] == r.SourceHash {
