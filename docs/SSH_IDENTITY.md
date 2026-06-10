@@ -1,26 +1,41 @@
 # SSH identity (codified)
 
-Unified SSH logins for **local-ci remote execution** and agent automation over Tailscale.
+Unified SSH logins for **local-ci remote execution** and agent automation.
 
-## Fleet
+**All fleet nodes live in Tailscale only** — use MagicDNS names from `tailscale status`, never `.local` mDNS or LAN IPs.
 
-**Local (this machine):** `downhome` — Apple Silicon Mac, user **`aivcs`**. Run `local-ci` here before push; use `--remote-host` to fan out to other nodes.
+## In Tailscale
 
-**4 remote compute nodes:**
+Source of truth: `tailscale status` (names in the **DNS** column).
 
-| Preset | Tailscale | OS | GPU | User |
-|--------|-----------|-----|-----|------|
+| Tailscale IP | DNS name | OS | Preset | SSH user |
+|--------------|----------|-----|--------|----------|
+| `100.84.125.48` | **`downhome`** | macOS | `downhome` / `studio` | `aivcs` |
+| `100.81.115.15` | `uranus` | macOS | `uranus` | `aivcs` |
+| `100.103.163.28` | `discovery` | macOS | `discovery` | `aivcs` |
+| `100.124.89.47` | `spark-bde7` | linux | `sparky` / `aivcs2` | `aivcs2` |
+| `100.85.43.19` | `msi` | windows | `msi` | `aivcs` |
+
+```bash
+tailscale status
+tailscale ping msi      # reachability over tailnet
+tailscale ping downhome
+```
+
+**Local machine:** you are on **`downhome`** (Apple Silicon Mac, user `aivcs`). Run `local-ci` here; fan out with `--remote-host <preset>`.
+
+**`msi`:** online when logged into Windows + Tailscale; offline when logged out.
+
+## Fleet (presets)
+| Preset | In Tailscale (DNS) | OS | GPU | User |
+|--------|-------------------|-----|-----|------|
 | `downhome` | `downhome` | macOS (Apple Silicon) | — | `aivcs` |
 | `uranus` | `uranus` | macOS | — | `aivcs` |
 | `discovery` | `discovery` | macOS | — | `aivcs` |
 | `sparky` | `spark-bde7` | Linux | Blackwell (DGX) | `aivcs2` |
-| `msi` | `msi` | **Windows 11** | **RTX 5070** | `aivcs` |
+| `msi` | `msi` | Windows 11 | RTX 5070 | `aivcs` |
 
-Preset alias: `studio` → same as `downhome` (back-compat).
-
-`msi` is **online** when logged into Windows and Tailscale; it was offline while logged out.
-
-## Policy
+Alias: `studio` → `downhome`.
 
 | Platform | Canonical user | Scope |
 |----------|----------------|-------|
@@ -32,7 +47,7 @@ Preset alias: `studio` → same as `downhome` (back-compat).
 
 1. **Automation uses canonical users only** — agents, `local-ci --remote*`, and CI babysit scripts use the users above.
 2. **`stevenirvin` is not an automation account** — personal/interactive use only.
-3. **Tailscale MagicDNS** — preset `host` is the tailnet name (`uranus`, `msi`, …), not `.local` mDNS or LAN IPs.
+3. **In Tailscale only** — preset `host` must match the **DNS name** from `tailscale status` (`downhome`, `uranus`, `msi`, …). No `.local`, no raw LAN IPs in presets.
 4. **Explicit `user@host` overrides** — if a preset or `--remote` includes `@`, that user wins (escape hatch only).
 
 ### Windows (`msi`) caveats

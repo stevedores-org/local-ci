@@ -517,11 +517,10 @@ Sample schema:
 
 ## Remote execution
 
-Run expensive stages (clippy, test) on remote hardware via **Tailscale + SSH+tmux** before pushing — keeps GitHub Actions minutes for PR gates only. See [REMOTE_CI_SETUP.md](REMOTE_CI_SETUP.md) for full setup.
-
-**Prerequisite:** `tailscale status` — **local** machine is **`downhome`** (Apple Silicon Mac, user `aivcs`). Remote nodes: uranus, discovery, spark-bde7, **msi** (Windows 11 / RTX 5070). See [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md).
+Run expensive stages on remote nodes **in Tailscale** before pushing — keeps GitHub Actions minutes for PR gates only. **`downhome`** is this Mac (`aivcs`). Fleet map: [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md) → **In Tailscale**.
 
 ```bash
+tailscale status
 tailscale ping uranus
 ssh aivcs@uranus echo ok
 ssh aivcs2@spark-bde7 echo ok

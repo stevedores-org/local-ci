@@ -1,7 +1,7 @@
 # .local-ci-remote.toml — Remote-specific configuration overrides
 #
 # Canonical SSH users: docs/SSH_IDENTITY.md
-# Reach nodes over Tailscale MagicDNS (see REMOTE_CI_SETUP.md).
+# Reach nodes in Tailscale only (see docs/SSH_IDENTITY.md → "In Tailscale").
 
 [ssh_defaults]
 macos_user = "aivcs"
