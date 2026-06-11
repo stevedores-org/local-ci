@@ -2,6 +2,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"strings"
 )
 
@@ -55,13 +56,17 @@ func DetectPlatform() Platform {
 }
 
 func isMacOS() bool {
-	// Simple check, can be improved if needed
-	return strings.Contains(strings.ToLower(os.Getenv("OSTYPE")), "darwin") ||
-		isFileExists("/System/Library/CoreServices/SystemVersion.plist")
+	// Key off the compile-time GOOS rather than the OSTYPE env var (a
+	// bash-only variable not exported to child processes, so it was dead) or
+	// a plist stat.
+	return runtime.GOOS == "darwin"
 }
 
 func isLinux() bool {
-	return isFileExists("/proc/version")
+	// Use GOOS, not the presence of /proc/version — a Linux host without /proc
+	// mounted (minimal containers/sandboxes) would otherwise be misdetected as
+	// PlatformUnknown. /proc/version is still consulted for the WSL sub-check.
+	return runtime.GOOS == "linux"
 }
 
 func isFileExists(path string) bool {

@@ -1,8 +1,18 @@
 package main
 
 import (
+	"runtime"
 	"testing"
 )
+
+func TestPlatformDetectionUsesGOOS(t *testing.T) {
+	if isMacOS() != (runtime.GOOS == "darwin") {
+		t.Errorf("isMacOS()=%v but GOOS=%q", isMacOS(), runtime.GOOS)
+	}
+	if isLinux() != (runtime.GOOS == "linux") {
+		t.Errorf("isLinux()=%v but GOOS=%q", isLinux(), runtime.GOOS)
+	}
+}
 
 func TestDetectPlatformSmoke(t *testing.T) {
 	p := DetectPlatform()
