@@ -87,15 +87,16 @@ func parseSubstitutersFromConf(confPath string) []string {
 	return caches
 }
 
-// normalizeCacheURL trims trailing slashes for exact substituter comparison.
-func normalizeCacheURL(url string) string {
-	return strings.TrimRight(strings.TrimSpace(url), "/")
+// normalizeCacheURL trims surrounding whitespace and a trailing slash so that
+// equivalent substituter URLs compare equal.
+func normalizeCacheURL(u string) string {
+	return strings.TrimRight(strings.TrimSpace(u), "/")
 }
 
 // getInstalledCachesHook is set in tests to avoid reading nix.conf.
 var getInstalledCachesHook func() ([]string, error)
 
-// IsCacheInstalled checks if a specific cache is already configured
+// IsCacheInstalled checks if a specific cache is already configured.
 func IsCacheInstalled(cacheURL string) bool {
 	var installed []string
 	var err error
@@ -107,14 +108,22 @@ func IsCacheInstalled(cacheURL string) bool {
 	if err != nil {
 		return false
 	}
+	return cacheListContains(installed, cacheURL)
+}
 
-	want := normalizeCacheURL(cacheURL)
-	for _, cache := range installed {
-		if normalizeCacheURL(cache) == want {
+// cacheListContains reports whether url is present in the installed substituter
+// list, comparing normalized URLs for equality. The previous bidirectional
+// strings.Contains match produced false positives — e.g. a configured
+// "https://cache.nixos.org" reported "https://cache.nixos.org/extra" as
+// installed, and any configured entry that was a substring of the requested
+// URL (or vice versa) over-matched.
+func cacheListContains(installed []string, url string) bool {
+	target := normalizeCacheURL(url)
+	for _, c := range installed {
+		if normalizeCacheURL(c) == target {
 			return true
 		}
 	}
-
 	return false
 }
 
