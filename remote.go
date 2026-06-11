@@ -64,7 +64,9 @@ func benignSSHFailure(cmd, stdout, stderr string) bool {
 	if !strings.HasPrefix(strings.TrimSpace(cmd), "cat ") {
 		return false
 	}
-	return strings.Contains(stderr, "No such file") || (stderr == "" && stdout == "")
+	return strings.Contains(stderr, "No such file") ||
+		strings.Contains(stderr, "cannot open") ||
+		(stderr == "" && stdout == "")
 }
 
 // RemoteExecutor handles execution of stages on a remote machine via SSH+tmux
@@ -132,6 +134,12 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 		Status:  "fail",
 	}
 
+	if len(stage.Cmd) == 0 {
+		result.Error = fmt.Errorf("no command defined")
+		result.Duration = time.Since(start)
+		return result
+	}
+
 	sentinelFile := fmt.Sprintf("/tmp/kc_exit_%s_%d", stage.Name, time.Now().UnixNano())
 	remoteCmd := buildRemoteStageCommand(re.WorkDir, stage.Cmd, sentinelFile)
 
@@ -142,10 +150,8 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), stageTimeout)
 	defer cancel()
 
-	output, err := re.runInSession(ctx, remoteCmd)
-	if err != nil {
+	if err := re.sendToSession(ctx, remoteCmd); err != nil {
 		result.Error = err
-		result.Output = output
 		result.Duration = time.Since(start)
 		if re.Verbose {
 			warnf("Remote execution failed: %v", err)
@@ -156,7 +162,13 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 	exitCode, err := re.pollExitCode(ctx, sentinelFile)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to get exit code: %w", err)
-		result.Output = output
+		result.Duration = time.Since(start)
+		return result
+	}
+
+	output, err := re.captureSessionOutput(ctx)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to capture output: %w", err)
 		result.Duration = time.Since(start)
 		return result
 	}
@@ -176,11 +188,11 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 	return result
 }
 
-// runInSession executes a command within a tmux session
-func (re *RemoteExecutor) runInSession(ctx context.Context, cmd string) (string, error) {
+// sendToSession dispatches a command into a tmux session without waiting for completion.
+func (re *RemoteExecutor) sendToSession(ctx context.Context, cmd string) error {
 	initCmd := fmt.Sprintf(
 		"tmux new-session -d -s %s -c %s 'sleep 999999' 2>/dev/null; true",
-		re.Session,
+		escapeShellArg(re.Session),
 		escapeShellArg(re.WorkDir),
 	)
 
@@ -192,22 +204,24 @@ func (re *RemoteExecutor) runInSession(ctx context.Context, cmd string) (string,
 
 	sendCmd := fmt.Sprintf(
 		"tmux send-keys -t %s '%s' Enter",
-		re.Session,
+		escapeShellArg(re.Session),
 		escapeForTmux(cmd),
 	)
 
 	if err := re.sshExec(ctx, sendCmd); err != nil {
-		return "", fmt.Errorf("failed to send command to tmux: %w", err)
+		return fmt.Errorf("failed to send command to tmux: %w", err)
 	}
 
-	time.Sleep(100 * time.Millisecond)
+	return nil
+}
 
-	captureCmd := fmt.Sprintf("tmux capture-pane -t %s -p", re.Session)
+// captureSessionOutput reads the current tmux pane after a stage completes.
+func (re *RemoteExecutor) captureSessionOutput(ctx context.Context) (string, error) {
+	captureCmd := fmt.Sprintf("tmux capture-pane -t %s -p", escapeShellArg(re.Session))
 	output, err := re.sshExecWithOutput(ctx, captureCmd)
 	if err != nil {
 		return "", fmt.Errorf("failed to capture output: %w", err)
 	}
-
 	return output, nil
 }
 
@@ -274,7 +288,7 @@ func escapeForTmux(cmd string) string {
 func (re *RemoteExecutor) EnsureRemoteSession(ctx context.Context) error {
 	cmd := fmt.Sprintf(
 		"tmux new-session -d -s %s -c %s 'sleep 999999' 2>/dev/null || true",
-		re.Session,
+		escapeShellArg(re.Session),
 		escapeShellArg(re.WorkDir),
 	)
 	return re.sshExec(ctx, cmd)
@@ -282,7 +296,7 @@ func (re *RemoteExecutor) EnsureRemoteSession(ctx context.Context) error {
 
 // KillRemoteSession kills the remote tmux session
 func (re *RemoteExecutor) KillRemoteSession(ctx context.Context) error {
-	cmd := fmt.Sprintf("tmux kill-session -t %s 2>/dev/null || true", re.Session)
+	cmd := fmt.Sprintf("tmux kill-session -t %s 2>/dev/null || true", escapeShellArg(re.Session))
 	return re.sshExec(ctx, cmd)
 }
 

@@ -15,7 +15,7 @@ func TestBuildDryRunReportAllCached(t *testing.T) {
 		"test": "hash1",
 	}
 
-	report := BuildDryRunReport(stages, cache, "hash1", false, nil)
+	report := BuildDryRunReport(stages, cache, nil, "hash1", false, nil)
 
 	for _, s := range report.Stages {
 		if s.WouldRun {
@@ -38,7 +38,7 @@ func TestBuildDryRunReportHashChanged(t *testing.T) {
 		"test": "oldhash",
 	}
 
-	report := BuildDryRunReport(stages, cache, "newhash", false, nil)
+	report := BuildDryRunReport(stages, cache, nil, "newhash", false, nil)
 
 	for _, s := range report.Stages {
 		if !s.WouldRun {
@@ -59,7 +59,7 @@ func TestBuildDryRunReportNoCache(t *testing.T) {
 		"fmt": "hash1",
 	}
 
-	report := BuildDryRunReport(stages, cache, "hash1", true, nil)
+	report := BuildDryRunReport(stages, cache, nil, "hash1", true, nil)
 
 	if len(report.Stages) != 1 {
 		t.Fatalf("expected 1 stage, got %d", len(report.Stages))
@@ -78,7 +78,7 @@ func TestBuildDryRunReportDisabledStages(t *testing.T) {
 		{Name: "deny", Cmd: []string{"cargo", "deny"}, Enabled: false},
 	}
 
-	report := BuildDryRunReport(stages, nil, "hash1", true, nil)
+	report := BuildDryRunReport(stages, nil, nil, "hash1", true, nil)
 
 	disabledCount := 0
 	for _, s := range report.Stages {
@@ -106,7 +106,7 @@ func TestBuildDryRunReportMixedStates(t *testing.T) {
 		// test not cached
 	}
 
-	report := BuildDryRunReport(stages, cache, "hash1", false, nil)
+	report := BuildDryRunReport(stages, cache, nil, "hash1", false, nil)
 
 	if len(report.Stages) != 3 {
 		t.Errorf("expected 3 stages, got %d", len(report.Stages))
@@ -114,7 +114,7 @@ func TestBuildDryRunReportMixedStates(t *testing.T) {
 }
 
 func TestBuildDryRunReportSourceHash(t *testing.T) {
-	report := BuildDryRunReport(nil, nil, "abc123def", false, nil)
+	report := BuildDryRunReport(nil, nil, nil, "abc123def", false, nil)
 
 	if report.SourceHash != "abc123def" {
 		t.Errorf("expected source hash 'abc123def', got %q", report.SourceHash)
@@ -122,7 +122,7 @@ func TestBuildDryRunReportSourceHash(t *testing.T) {
 }
 
 func TestBuildDryRunReportEmptyStages(t *testing.T) {
-	report := BuildDryRunReport(nil, nil, "hash", false, nil)
+	report := BuildDryRunReport(nil, nil, nil, "hash", false, nil)
 
 	if len(report.Stages) != 0 {
 		t.Errorf("expected 0 stages, got %d", len(report.Stages))
@@ -136,7 +136,7 @@ func TestBuildDryRunReportRemoteTarget(t *testing.T) {
 		WorkDir:    "/tmp/local-ci",
 		HostPreset: "discovery",
 	}
-	report := BuildDryRunReport(nil, nil, "hash", false, remote)
+	report := BuildDryRunReport(nil, nil, nil, "hash", false, remote)
 	if report.Remote == nil || report.Remote.Host != "aivcs@discovery" {
 		t.Fatalf("expected remote target in report: %+v", report.Remote)
 	}

@@ -53,6 +53,31 @@ func TestGetEnabledStagesUnknownStagesSortAlphabetically(t *testing.T) {
 	}
 }
 
+func TestGetAllStagesIncludesDisabled(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"fmt":    {Name: "fmt", Enabled: true},
+			"clippy": {Name: "clippy", Enabled: true},
+			"test":   {Name: "test", Enabled: true},
+			"check":  {Name: "check", Enabled: false},
+			"deny":   {Name: "deny", Enabled: false},
+		},
+	}
+
+	all := config.GetAllStages()
+	if len(all) != 5 {
+		t.Fatalf("expected all 5 stages (incl. disabled), got %d: %v", len(all), all)
+	}
+
+	// Deterministic priority order, regardless of enabled state.
+	expected := []string{"fmt", "check", "clippy", "test", "deny"}
+	for i, name := range expected {
+		if all[i] != name {
+			t.Errorf("position %d: expected %q, got %q (full order: %v)", i, name, all[i], all)
+		}
+	}
+}
+
 func TestGetTimeoutConfigured(t *testing.T) {
 	config := &Config{
 		Stages: map[string]Stage{
