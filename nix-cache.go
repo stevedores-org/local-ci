@@ -87,20 +87,35 @@ func parseSubstitutersFromConf(confPath string) []string {
 	return caches
 }
 
-// IsCacheInstalled checks if a specific cache is already configured
+// IsCacheInstalled checks if a specific cache is already configured.
 func IsCacheInstalled(cacheURL string) bool {
 	installed, err := GetInstalledCaches()
 	if err != nil {
 		return false
 	}
+	return cacheListContains(installed, cacheURL)
+}
 
-	for _, cache := range installed {
-		if strings.Contains(cache, cacheURL) || strings.Contains(cacheURL, cache) {
+// cacheListContains reports whether url is present in the installed substituter
+// list, comparing normalized URLs for equality. The previous bidirectional
+// strings.Contains match produced false positives — e.g. a configured
+// "https://cache.nixos.org" reported "https://cache.nixos.org/extra" as
+// installed, and any configured entry that was a substring of the requested
+// URL (or vice versa) over-matched.
+func cacheListContains(installed []string, url string) bool {
+	target := normalizeCacheURL(url)
+	for _, c := range installed {
+		if normalizeCacheURL(c) == target {
 			return true
 		}
 	}
-
 	return false
+}
+
+// normalizeCacheURL trims surrounding whitespace and a trailing slash so that
+// equivalent substituter URLs compare equal.
+func normalizeCacheURL(u string) string {
+	return strings.TrimRight(strings.TrimSpace(u), "/")
 }
 
 // AddNixCache adds a binary cache to Nix configuration
