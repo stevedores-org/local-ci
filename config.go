@@ -52,15 +52,6 @@ type CacheConfig struct {
 	IncludePatterns []string `toml:"include_patterns"`
 }
 
-// StageConfig defines a CI stage
-type StageConfig struct {
-	Command                  []string `toml:"command"`
-	FixCommand               []string `toml:"fix_command"`
-	Timeout                  int      `toml:"timeout"` // seconds
-	Enabled                  bool     `toml:"enabled"`
-	RespectWorkspaceExcludes bool     `toml:"respect_workspace_excludes"`
-}
-
 // DepsConfig defines system dependencies
 type DepsConfig struct {
 	Required []string `toml:"required"`
@@ -294,21 +285,6 @@ func defaultStages() map[string]Stage {
 			Watch:     []string{"*.toml"},
 		},
 	}
-}
-
-// ToStageConfigs converts the config stages map to Stage structs
-func (c *Config) ToStageConfigs() map[string]StageConfig {
-	result := make(map[string]StageConfig)
-	for name, stage := range c.Stages {
-		result[name] = StageConfig{
-			Command:                  stage.Cmd,
-			FixCommand:               stage.FixCmd,
-			Timeout:                  stage.Timeout,
-			Enabled:                  stage.Enabled,
-			RespectWorkspaceExcludes: false,
-		}
-	}
-	return result
 }
 
 // GetTimeout returns the timeout for a stage, with fallback to default
