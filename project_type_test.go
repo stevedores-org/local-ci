@@ -49,29 +49,29 @@ func TestDetectProjectTypeNode(t *testing.T) {
 	}
 }
 
-func TestDetectProjectTypeNodeBeatsPythonMarkers(t *testing.T) {
-	tmpdir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte(`{"name":"app"}`), 0644); err != nil {
-		t.Fatal(err)
+// TestDetectProjectTypeNodeWinsOverPythonAndSwift verifies that an explicit
+// package.json takes precedence over Python/Swift markers a Node repo may also
+// carry (regression for the precedence bug).
+func TestDetectProjectTypeNodeWinsOverPythonAndSwift(t *testing.T) {
+	cases := map[string]string{
+		"requirements.txt": "requests==2.0",
+		"setup.py":         "from setuptools import setup",
+		"pyproject.toml":   "[project]",
+		"Package.swift":    "// swift-tools-version:5.9",
 	}
-	if err := os.WriteFile(filepath.Join(tmpdir, "requirements.txt"), []byte("pytest\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
-		t.Fatalf("expected ProjectTypeNode when package.json + requirements.txt, got %s", got)
-	}
-}
-
-func TestDetectProjectTypeNodeBeatsSwiftMarker(t *testing.T) {
-	tmpdir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte(`{"name":"app"}`), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(tmpdir, "Package.swift"), []byte("// swift tools\n"), 0644); err != nil {
-		t.Fatal(err)
-	}
-	if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
-		t.Fatalf("expected ProjectTypeNode when package.json + Package.swift, got %s", got)
+	for marker, content := range cases {
+		t.Run(marker, func(t *testing.T) {
+			tmpdir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte("{}"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tmpdir, marker), []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
+				t.Errorf("package.json + %s: expected ProjectTypeNode, got %s", marker, got)
+			}
+		})
 	}
 }
 

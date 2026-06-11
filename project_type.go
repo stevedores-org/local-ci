@@ -27,8 +27,9 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypeRust
 	}
 
-	// package.json is an explicit Node marker — check before Swift/Python
-	// so monorepos with requirements.txt or Package.swift still get npm/bun stages.
+	// Check for Node.js/TypeScript project files. package.json is a definitive
+	// Node marker — check before Swift/Python so monorepos with requirements.txt
+	// or Package.swift still get npm/bun stages.
 	if fileExists(filepath.Join(root, "package.json")) {
 		return ProjectTypeNode
 	}
