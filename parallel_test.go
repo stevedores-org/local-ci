@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // === Parallel execution tests ===
@@ -104,6 +105,49 @@ func TestParallelRunnerFailFast(t *testing.T) {
 	}
 }
 
+func TestParallelRunnerEmptyCommandNoPanic(t *testing.T) {
+	pr := &ParallelRunner{
+		Stages:      []Stage{{Name: "empty", Cmd: nil, Timeout: 10}},
+		Concurrency: 1,
+		Cwd:         t.TempDir(),
+		NoCache:     true,
+		Cache:       make(map[string]string),
+		SourceHash:  "h",
+	}
+
+	results := pr.Run() // must not panic on stage.Cmd[0]
+	if len(results) != 1 || results[0].Status != "fail" {
+		t.Fatalf("expected one failed result for empty command, got %+v", results)
+	}
+}
+
+func TestParallelRunnerFailFastTerminates(t *testing.T) {
+	stages := []Stage{
+		{Name: "fail", Cmd: []string{"false"}, Timeout: 10},
+		{Name: "a", Cmd: []string{"echo", "a"}, Timeout: 10},
+		{Name: "b", Cmd: []string{"echo", "b"}, Timeout: 10},
+		{Name: "c", Cmd: []string{"echo", "c"}, Timeout: 10},
+	}
+	pr := &ParallelRunner{
+		Stages:      stages,
+		Concurrency: 4,
+		Cwd:         t.TempDir(),
+		NoCache:     true,
+		Cache:       make(map[string]string),
+		SourceHash:  "h",
+		FailFast:    true,
+	}
+
+	done := make(chan []Result, 1)
+	go func() { done <- pr.Run() }()
+	select {
+	case <-done:
+		// returned — good (no deadlock)
+	case <-time.After(5 * time.Second):
+		t.Fatal("ParallelRunner.Run() did not terminate — fail-fast deadlock")
+	}
+}
+
 func TestParallelRunnerCacheHit(t *testing.T) {
 	dir := t.TempDir()
 
@@ -112,7 +156,7 @@ func TestParallelRunnerCacheHit(t *testing.T) {
 	}
 
 	cache := map[string]string{
-		"cached": "hash123",
+		"cached": cacheKeyForStage(Stage{Name: "cached", Cmd: []string{"echo", "hello"}}, "hash123"),
 	}
 
 	pr := &ParallelRunner{

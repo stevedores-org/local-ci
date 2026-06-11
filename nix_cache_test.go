@@ -92,6 +92,29 @@ func TestCacheTrustSettings(t *testing.T) {
 	}
 }
 
+func TestIsCacheInstalledExactMatch(t *testing.T) {
+	getInstalledCachesHook = func() ([]string, error) {
+		return []string{
+			"https://cache.nixos.org",
+			"https://nix-cache.stevedores.org/",
+		}, nil
+	}
+	t.Cleanup(func() { getInstalledCachesHook = nil })
+
+	if !IsCacheInstalled("https://cache.nixos.org/") {
+		t.Fatal("expected exact normalized match for cache.nixos.org")
+	}
+	if !IsCacheInstalled("https://nix-cache.stevedores.org") {
+		t.Fatal("expected stevedores cache match")
+	}
+	if IsCacheInstalled("https://cache.nixos.org/extra") {
+		t.Fatal("substring URL must not match configured cache.nixos.org")
+	}
+	if IsCacheInstalled("https://nix-cache.stevedores.org/evil") {
+		t.Fatal("substring URL must not match configured stevedores cache")
+	}
+}
+
 func TestIsCacheInstalled(t *testing.T) {
 	// This test depends on Nix installation
 	if !CheckNixInstallation() {

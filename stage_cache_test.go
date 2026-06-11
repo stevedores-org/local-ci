@@ -238,6 +238,39 @@ func TestStageHashIgnoresTargetDir(t *testing.T) {
 	}
 }
 
+func TestComputeSourceHashExactFilename(t *testing.T) {
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/foo\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "main.go"), []byte("package main\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	config := &Config{
+		Cache: CacheConfig{
+			SkipDirs:        []string{".git"},
+			IncludePatterns: []string{"go.mod", "*.go"},
+		},
+	}
+
+	hashWithMod, err := computeSourceHash(dir, config, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := os.WriteFile(filepath.Join(dir, "go.mod"), []byte("module example.com/bar\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	hashAfterMod, err := computeSourceHash(dir, config, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hashWithMod == hashAfterMod {
+		t.Fatal("go.mod changes should affect source hash")
+	}
+}
+
 func TestMatchesPatterns(t *testing.T) {
 	tests := []struct {
 		name     string

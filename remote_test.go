@@ -64,9 +64,10 @@ func TestBuildRemoteStageCommand(t *testing.T) {
 }
 
 type mockSSH struct {
-	calls    []string
-	exitCode string
-	failOn   string
+	calls         []string
+	exitCode      string
+	captureOutput string
+	failOn        string
 }
 
 func (m *mockSSH) execWithOutput(_ context.Context, cmd string) (string, error) {
@@ -75,6 +76,9 @@ func (m *mockSSH) execWithOutput(_ context.Context, cmd string) (string, error) 
 		return "", context.DeadlineExceeded
 	}
 	if strings.Contains(cmd, "capture-pane") {
+		if m.captureOutput != "" {
+			return m.captureOutput, nil
+		}
 		return "stage output\n", nil
 	}
 	if strings.Contains(cmd, "cat /tmp/kc_exit_") {
@@ -149,6 +153,49 @@ func TestRemoteExecutorSSHFailure(t *testing.T) {
 	}
 	if result.Error == nil {
 		t.Fatal("expected SSH error")
+	}
+}
+
+func TestRemoteExecutorCaptureAfterCompletion(t *testing.T) {
+	mock := &mockSSH{exitCode: "0\n", captureOutput: "final output line\n"}
+	re := NewRemoteExecutor("aivcs@test", "onion", "/tmp/project", 30*time.Second, false)
+	re.ssh = mock
+
+	stage := Stage{
+		Name:    "fmt",
+		Cmd:     []string{"echo", "hello"},
+		Timeout: 5,
+		Enabled: true,
+	}
+
+	result := re.ExecuteStage(stage)
+	if result.Status != "pass" {
+		t.Fatalf("expected pass, got %s (%v)", result.Status, result.Error)
+	}
+	if !strings.Contains(result.Output, "final output line") {
+		t.Errorf("expected post-completion capture, got %q", result.Output)
+	}
+
+	captureIdx := -1
+	catIdx := -1
+	for i, call := range mock.calls {
+		if strings.Contains(call, "capture-pane") {
+			captureIdx = i
+		}
+		if strings.Contains(call, "cat /tmp/kc_exit_") {
+			catIdx = i
+		}
+	}
+	if captureIdx == -1 || catIdx == -1 || captureIdx <= catIdx {
+		t.Fatalf("capture-pane should run after sentinel read; calls=%v", mock.calls)
+	}
+}
+
+func TestRemoteExecutorEmptyCommand(t *testing.T) {
+	re := NewRemoteExecutor("aivcs@test", "onion", "/tmp/project", 30*time.Second, false)
+	result := re.ExecuteStage(Stage{Name: "empty"})
+	if result.Status != "fail" || result.Error == nil {
+		t.Fatalf("expected fail for empty command, got %+v", result)
 	}
 }
 
