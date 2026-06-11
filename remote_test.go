@@ -9,6 +9,29 @@ import (
 	"time"
 )
 
+func TestBenignSSHFailure(t *testing.T) {
+	tests := []struct {
+		name           string
+		cmd            string
+		stdout, stderr string
+		want           bool
+	}{
+		{"cat sentinel absent (suppressed stderr)", "cat /tmp/kc_exit_test_1 2>/dev/null", "", "", true},
+		{"cat sentinel no-such-file", "cat /tmp/kc_exit_test_1", "", "cat: ...: No such file or directory", true},
+		{"capture-pane empty is NOT benign", "tmux capture-pane -t onion -p", "", "", false},
+		{"send-keys failure is NOT benign", "tmux send-keys -t onion 'x' Enter", "", "", false},
+		{"connection failure with stderr is NOT benign", "tmux new-session ...", "", "ssh: connect: Connection refused", false},
+		{"empty-empty non-cat is NOT benign", "rm -f /tmp/kc_exit_test_1", "", "", false},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := benignSSHFailure(tt.cmd, tt.stdout, tt.stderr); got != tt.want {
+				t.Errorf("benignSSHFailure(%q, %q, %q) = %v, want %v", tt.cmd, tt.stdout, tt.stderr, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestRemoteExecutorCreation(t *testing.T) {
 	re := NewRemoteExecutor("aivcs@100.90.209.9", "onion", "/tmp/project", 30*time.Second, false)
 	if re.Host != "aivcs@100.90.209.9" {

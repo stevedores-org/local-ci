@@ -40,16 +40,31 @@ func (e execSSH) execWithOutput(ctx context.Context, cmd string) (string, error)
 	sshCmd.Stderr = &stderr
 
 	if err := sshCmd.Run(); err != nil {
-		if strings.Contains(cmd, "cat") && strings.Contains(stderr.String(), "No such file") {
-			return "", nil
-		}
-		if stderr.Len() == 0 && stdout.Len() == 0 {
+		if benignSSHFailure(cmd, stdout.String(), stderr.String()) {
 			return "", nil
 		}
 		return stdout.String(), fmt.Errorf("SSH command failed: %w (stderr: %s)", err, stderr.String())
 	}
 
 	return stdout.String(), nil
+}
+
+// benignSSHFailure reports whether a non-zero ssh exit should be treated as an
+// empty success rather than an error. The only benign case is polling the
+// exit-code sentinel before it exists: pollExitCode runs `cat <sentinel>
+// 2>/dev/null`, which exits non-zero with no output when the file is absent and
+// must be retried, not failed.
+//
+// This deliberately matches only a leading `cat ` command. The previous logic
+// swallowed ANY non-zero exit with empty stdout+stderr (masking real
+// send-keys/capture/connection failures behind a later, less informative
+// "timeout waiting for exit code"), and used strings.Contains(cmd, "cat"),
+// which also matched `capture-pane` ("cat" ⊂ "capture").
+func benignSSHFailure(cmd, stdout, stderr string) bool {
+	if !strings.HasPrefix(strings.TrimSpace(cmd), "cat ") {
+		return false
+	}
+	return strings.Contains(stderr, "No such file") || (stderr == "" && stdout == "")
 }
 
 // RemoteExecutor handles execution of stages on a remote machine via SSH+tmux
