@@ -39,10 +39,13 @@ func (r *ParallelRunner) Run() []Result {
 	resultChan := make(chan Result, len(r.Stages))
 	var wg sync.WaitGroup
 
-	stageDeps := make(map[string][]string)
+	// Resolve dependencies to only those present in the selected stage set,
+	// and detect cycles. Without this, a stage that depends on an unselected
+	// stage (e.g. `local-ci --parallel clippy`, where clippy depends on the
+	// unselected fmt) or a dependency cycle would wait forever and hang Run().
+	stageDeps, cyclic := resolveDeps(r.Stages)
 	stageIndex := make(map[string]int, len(r.Stages))
 	for i, stage := range r.Stages {
-		stageDeps[stage.Name] = stage.DependsOn
 		stageIndex[stage.Name] = i
 	}
 
@@ -50,6 +53,21 @@ func (r *ParallelRunner) Run() []Result {
 		wg.Add(1)
 		go func(s Stage) {
 			defer wg.Done()
+
+			// A stage caught in a dependency cycle can never become runnable;
+			// fail it instead of spinning forever.
+			if cyclic[s.Name] {
+				resultChan <- Result{
+					Name:   s.Name,
+					Status: "fail",
+					Error:  fmt.Errorf("dependency cycle involving stage %q", s.Name),
+				}
+				failed.Store(true)
+				mu.Lock()
+				completed[s.Name] = true
+				mu.Unlock()
+				return
+			}
 
 			for {
 				mu.Lock()
@@ -134,6 +152,65 @@ func (r *ParallelRunner) Run() []Result {
 	}
 
 	return results
+}
+
+// resolveDeps returns each stage's dependency list pruned to dependencies that
+// are actually present in the selected stage set (and not self-referential),
+// plus the set of stage names involved in a dependency cycle. Pruning prevents
+// an indefinite wait on an unselected dependency; the cycle set lets Run fail
+// those stages instead of deadlocking.
+func resolveDeps(stages []Stage) (deps map[string][]string, cyclic map[string]bool) {
+	inSet := make(map[string]bool, len(stages))
+	for _, s := range stages {
+		inSet[s.Name] = true
+	}
+
+	deps = make(map[string][]string, len(stages))
+	indeg := make(map[string]int, len(stages))
+	dependents := make(map[string][]string) // dep -> stages that depend on it
+	for _, s := range stages {
+		var d []string
+		for _, dep := range s.DependsOn {
+			if dep != s.Name && inSet[dep] {
+				d = append(d, dep)
+			}
+		}
+		deps[s.Name] = d
+		indeg[s.Name] = len(d)
+		for _, dep := range d {
+			dependents[dep] = append(dependents[dep], s.Name)
+		}
+	}
+
+	// Kahn's algorithm: anything left with indegree > 0 is part of a cycle.
+	var queue []string
+	for _, s := range stages {
+		if indeg[s.Name] == 0 {
+			queue = append(queue, s.Name)
+		}
+	}
+	resolved := 0
+	for len(queue) > 0 {
+		n := queue[0]
+		queue = queue[1:]
+		resolved++
+		for _, m := range dependents[n] {
+			indeg[m]--
+			if indeg[m] == 0 {
+				queue = append(queue, m)
+			}
+		}
+	}
+
+	cyclic = make(map[string]bool)
+	if resolved < len(stages) {
+		for _, s := range stages {
+			if indeg[s.Name] > 0 {
+				cyclic[s.Name] = true
+			}
+		}
+	}
+	return deps, cyclic
 }
 
 func (r *ParallelRunner) stageHash(stage Stage) string {

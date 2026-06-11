@@ -148,6 +148,61 @@ func TestParallelRunnerFailFastTerminates(t *testing.T) {
 	}
 }
 
+func TestParallelRunnerMissingDependencyNoHang(t *testing.T) {
+	// clippy depends on fmt, but only clippy is selected (as in
+	// `local-ci --parallel clippy`). The unselected dep must be pruned, not
+	// waited on forever.
+	pr := &ParallelRunner{
+		Stages:      []Stage{{Name: "clippy", Cmd: []string{"echo", "ok"}, Timeout: 10, DependsOn: []string{"fmt"}}},
+		Concurrency: 2,
+		Cwd:         t.TempDir(),
+		NoCache:     true,
+		Cache:       make(map[string]string),
+		SourceHash:  "h",
+	}
+
+	done := make(chan []Result, 1)
+	go func() { done <- pr.Run() }()
+	select {
+	case results := <-done:
+		if len(results) != 1 || results[0].Status != "pass" {
+			t.Fatalf("expected clippy to run and pass, got %+v", results)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() hung waiting on an unselected dependency")
+	}
+}
+
+func TestParallelRunnerDependencyCycle(t *testing.T) {
+	pr := &ParallelRunner{
+		Stages: []Stage{
+			{Name: "a", Cmd: []string{"echo", "a"}, Timeout: 10, DependsOn: []string{"b"}},
+			{Name: "b", Cmd: []string{"echo", "b"}, Timeout: 10, DependsOn: []string{"a"}},
+		},
+		Concurrency: 2,
+		Cwd:         t.TempDir(),
+		NoCache:     true,
+		Cache:       make(map[string]string),
+		SourceHash:  "h",
+	}
+
+	done := make(chan []Result, 1)
+	go func() { done <- pr.Run() }()
+	select {
+	case results := <-done:
+		if len(results) != 2 {
+			t.Fatalf("expected 2 results, got %+v", results)
+		}
+		for _, r := range results {
+			if r.Status != "fail" {
+				t.Errorf("cycle stage %q should fail, got %q", r.Name, r.Status)
+			}
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Run() hung on a dependency cycle")
+	}
+}
+
 func TestParallelRunnerCacheHit(t *testing.T) {
 	dir := t.TempDir()
 
