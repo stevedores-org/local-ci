@@ -49,6 +49,32 @@ func TestDetectProjectTypeNode(t *testing.T) {
 	}
 }
 
+// TestDetectProjectTypeNodeWinsOverPythonAndSwift verifies that an explicit
+// package.json takes precedence over Python/Swift markers a Node repo may also
+// carry (regression for the precedence bug).
+func TestDetectProjectTypeNodeWinsOverPythonAndSwift(t *testing.T) {
+	cases := map[string]string{
+		"requirements.txt": "requests==2.0",
+		"setup.py":         "from setuptools import setup",
+		"pyproject.toml":   "[project]",
+		"Package.swift":    "// swift-tools-version:5.9",
+	}
+	for marker, content := range cases {
+		t.Run(marker, func(t *testing.T) {
+			tmpdir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte("{}"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tmpdir, marker), []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
+				t.Errorf("package.json + %s: expected ProjectTypeNode, got %s", marker, got)
+			}
+		})
+	}
+}
+
 // TestDetectProjectTypeGo verifies Go project detection
 func TestDetectProjectTypeGo(t *testing.T) {
 	tmpdir := t.TempDir()
