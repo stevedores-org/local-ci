@@ -9,6 +9,64 @@ import (
 	"testing"
 )
 
+func TestComputeSourceHashDistinguishesPath(t *testing.T) {
+	cfg := &Config{Cache: CacheConfig{IncludePatterns: []string{"*.rs"}}}
+
+	// Same content, different filename -> must hash differently (rename detection).
+	a := t.TempDir()
+	os.WriteFile(filepath.Join(a, "a.rs"), []byte("fn main(){}"), 0644)
+	b := t.TempDir()
+	os.WriteFile(filepath.Join(b, "b.rs"), []byte("fn main(){}"), 0644)
+
+	ha, err := computeSourceHash(a, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	hb, err := computeSourceHash(b, cfg, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if ha == hb {
+		t.Errorf("rename (a.rs -> b.rs, same content) should change the hash, both = %s", ha)
+	}
+
+	// Splitting content across a file boundary must change the hash too.
+	c := t.TempDir()
+	os.WriteFile(filepath.Join(c, "a.rs"), []byte("AB"), 0644)
+	d := t.TempDir()
+	os.WriteFile(filepath.Join(d, "a.rs"), []byte("A"), 0644)
+	os.WriteFile(filepath.Join(d, "b.rs"), []byte("B"), 0644)
+	hc, _ := computeSourceHash(c, cfg, nil)
+	hd, _ := computeSourceHash(d, cfg, nil)
+	if hc == hd {
+		t.Errorf("file-boundary shift (AB vs A|B) should change the hash, both = %s", hc)
+	}
+}
+
+func TestSaveCacheAtomicRoundTrip(t *testing.T) {
+	dir := t.TempDir()
+	want := map[string]string{"fmt": "hash1", "clippy": "hash2"}
+	if err := saveCache(want, dir); err != nil {
+		t.Fatalf("saveCache: %v", err)
+	}
+	got, err := loadCache(dir)
+	if err != nil {
+		t.Fatalf("loadCache: %v", err)
+	}
+	for k, v := range want {
+		if got[k] != v {
+			t.Errorf("cache[%q] = %q, want %q", k, got[k], v)
+		}
+	}
+	// No temp files should be left behind.
+	entries, _ := os.ReadDir(dir)
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), ".local-ci-cache.tmp-") {
+			t.Errorf("leftover temp file: %s", e.Name())
+		}
+	}
+}
+
 func TestSelectStagesFromConfig(t *testing.T) {
 	dir := createTestWorkspace(t)
 	defer os.RemoveAll(dir)

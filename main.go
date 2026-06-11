@@ -32,6 +32,7 @@ import (
 	"crypto/md5"
 	"flag"
 	"fmt"
+	"io"
 	"io/fs"
 	"os"
 	"os/exec"
@@ -787,6 +788,24 @@ func computeStageHashes(root string, config *Config, ws *Workspace, stages []Sta
 }
 
 // computeSourceHash computes MD5 hash of Rust source files
+// mixFileIntoHash folds a file's identity (relative path, size, mode) and its
+// contents into h, NUL-delimited. Hashing raw content alone — no path, length,
+// or boundary marker — lets renames, moves, file splits, and adjacent-file
+// boundary shifts collide, so a stage can be wrongly reported cached after a
+// real change. Both hashers must use this so sequential/parallel/dry-run agree.
+func mixFileIntoHash(h io.Writer, root, path string, data []byte, d fs.DirEntry) {
+	rel, err := filepath.Rel(root, path)
+	if err != nil {
+		rel = path
+	}
+	var mode fs.FileMode
+	if info, ierr := d.Info(); ierr == nil {
+		mode = info.Mode().Perm()
+	}
+	fmt.Fprintf(h, "%s\x00%d\x00%o\x00", filepath.ToSlash(rel), len(data), mode)
+	h.Write(data)
+}
+
 func computeSourceHash(root string, config *Config, ws *Workspace) (string, error) {
 	h := md5.New()
 
@@ -826,7 +845,7 @@ func computeSourceHash(root string, config *Config, ws *Workspace) (string, erro
 				if err != nil {
 					return nil // Skip unreadable files
 				}
-				h.Write(data)
+				mixFileIntoHash(h, root, path, data, d)
 			}
 		}
 
@@ -885,7 +904,7 @@ func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (
 				if err != nil {
 					return nil // Skip unreadable files
 				}
-				h.Write(data)
+				mixFileIntoHash(h, root, path, data, d)
 			}
 		}
 
@@ -937,7 +956,24 @@ func saveCache(cache map[string]string, root string) error {
 	}
 
 	cachePath := filepath.Join(root, ".local-ci-cache")
-	return os.WriteFile(cachePath, []byte(strings.Join(lines, "\n")), 0644)
+
+	// Write atomically (temp file in the same dir + rename) so a crash or a
+	// concurrent local-ci run can't leave a truncated/interleaved cache file.
+	tmp, err := os.CreateTemp(root, ".local-ci-cache.tmp-*")
+	if err != nil {
+		return err
+	}
+	tmpName := tmp.Name()
+	if _, err := tmp.Write([]byte(strings.Join(lines, "\n"))); err != nil {
+		tmp.Close()
+		os.Remove(tmpName)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return os.Rename(tmpName, cachePath)
 }
 
 // cmdInit initializes a new .local-ci.toml configuration
