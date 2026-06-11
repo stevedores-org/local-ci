@@ -349,6 +349,31 @@ func (c *Config) GetEnabledStages() []string {
 	return enabled
 }
 
+// GetAllStages returns every configured stage name (enabled and disabled) in
+// deterministic order — the same ordering as GetEnabledStages, but without the
+// enabled filter. Used by the --all flag.
+func (c *Config) GetAllStages() []string {
+	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+
+	var all []string
+	seen := make(map[string]bool)
+	for _, name := range order {
+		if _, ok := c.Stages[name]; ok {
+			all = append(all, name)
+			seen[name] = true
+		}
+	}
+
+	var extra []string
+	for name := range c.Stages {
+		if !seen[name] {
+			extra = append(extra, name)
+		}
+	}
+	sort.Strings(extra)
+	return append(all, extra...)
+}
+
 // GetRemoteHost looks up a named host preset (loaded from
 // `.local-ci-remote.toml`) by name. Returns an actionable error when the
 // name is unknown — listing the names that *are* defined, or saying that

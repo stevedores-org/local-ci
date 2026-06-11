@@ -107,8 +107,14 @@ func (mc *mcpContext) handleRunAll(ctx context.Context, _ mcp.CallToolRequest) (
 	return mc.resultsToMCP(results), nil
 }
 
+func (mc *mcpContext) stageHash(stage Stage) (string, error) {
+	if len(stage.Watch) > 0 {
+		return computeStageHash(stage, mc.root, mc.config, mc.ws)
+	}
+	return computeSourceHash(mc.root, mc.config, mc.ws)
+}
+
 func (mc *mcpContext) handleGetStages(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	hash, _ := computeSourceHash(mc.root, mc.config, mc.ws)
 	cache, _ := loadCache(mc.root)
 
 	type stageInfo struct {
@@ -120,9 +126,10 @@ func (mc *mcpContext) handleGetStages(_ context.Context, _ mcp.CallToolRequest) 
 
 	var stages []stageInfo
 	for name, stage := range mc.config.Stages {
+		stage.Name = name
 		cmdStr := strings.Join(stage.Cmd, " ")
-		cacheKey := hash + "|" + cmdStr
-		hit := cache[name] == cacheKey
+		hash, _ := mc.stageHash(stage)
+		hit := cacheHit(cache, stage, hash)
 		stages = append(stages, stageInfo{
 			Name:     name,
 			Enabled:  stage.Enabled,
@@ -136,7 +143,6 @@ func (mc *mcpContext) handleGetStages(_ context.Context, _ mcp.CallToolRequest) 
 }
 
 func (mc *mcpContext) handleGetStaleStages(_ context.Context, _ mcp.CallToolRequest) (*mcp.CallToolResult, error) {
-	hash, _ := computeSourceHash(mc.root, mc.config, mc.ws)
 	cache, _ := loadCache(mc.root)
 
 	type staleStage struct {
@@ -149,9 +155,9 @@ func (mc *mcpContext) handleGetStaleStages(_ context.Context, _ mcp.CallToolRequ
 		if !stage.Enabled {
 			continue
 		}
-		cmdStr := strings.Join(stage.Cmd, " ")
-		cacheKey := hash + "|" + cmdStr
-		if cache[name] != cacheKey {
+		stage.Name = name
+		hash, _ := mc.stageHash(stage)
+		if !cacheHit(cache, stage, hash) {
 			reason := "cache miss"
 			if _, exists := cache[name]; !exists {
 				reason = "never run"
@@ -237,11 +243,18 @@ func (mc *mcpContext) handleGetWorkspace(_ context.Context, _ mcp.CallToolReques
 func (mc *mcpContext) executeStage(parent context.Context, stage Stage) Result {
 	cmdStr := strings.Join(stage.Cmd, " ")
 
-	// Check cache
-	hash, _ := computeSourceHash(mc.root, mc.config, mc.ws)
+	if len(stage.Cmd) == 0 {
+		return Result{
+			Name:    stage.Name,
+			Command: cmdStr,
+			Status:  "fail",
+			Error:   fmt.Errorf("no command defined"),
+		}
+	}
+
+	hash, _ := mc.stageHash(stage)
 	cache, _ := loadCache(mc.root)
-	cacheKey := hash + "|" + cmdStr
-	if cache[stage.Name] == cacheKey {
+	if cacheHit(cache, stage, hash) {
 		return Result{
 			Name:     stage.Name,
 			Command:  cmdStr,
@@ -278,8 +291,7 @@ func (mc *mcpContext) executeStage(parent context.Context, stage Stage) Result {
 		result.Error = err
 	} else {
 		result.Status = "pass"
-		// Update cache on success
-		cache[stage.Name] = cacheKey
+		cache[stage.Name] = cacheKeyForStage(stage, hash)
 		_ = saveCache(cache, mc.root)
 	}
 
