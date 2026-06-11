@@ -375,11 +375,14 @@ func main() {
 		}
 	}
 
-	// If --all, include disabled stages
+	// If --all, run every configured stage including disabled ones.
+	// (Disabled stages are never added above, so rebuild the list from all
+	// configured stages and force them enabled.)
 	if *flagAll {
 		if len(flag.Args()) == 0 {
 			stages = stages[:0]
-			for name, stage := range stageMap {
+			for _, name := range config.GetAllStages() {
+				stage := stageMap[name]
 				stage.Name = name
 				stage.Enabled = true
 				stages = append(stages, stage)
