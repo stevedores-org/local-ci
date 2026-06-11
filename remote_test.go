@@ -32,6 +32,20 @@ func TestBenignSSHFailure(t *testing.T) {
 	}
 }
 
+func TestSSHHardeningOpts(t *testing.T) {
+	opts := sshHardeningOpts(30 * time.Second)
+	joined := strings.Join(opts, " ")
+	for _, want := range []string{"BatchMode=yes", "StrictHostKeyChecking=accept-new", "ConnectTimeout=30"} {
+		if !strings.Contains(joined, want) {
+			t.Errorf("sshHardeningOpts missing %q; got %q", want, joined)
+		}
+	}
+	// A zero/sub-second timeout falls back to a sane default, never 0.
+	if got := strings.Join(sshHardeningOpts(0), " "); !strings.Contains(got, "ConnectTimeout=10") {
+		t.Errorf("expected ConnectTimeout=10 fallback, got %q", got)
+	}
+}
+
 func TestRemoteExecutorCreation(t *testing.T) {
 	re := NewRemoteExecutor("aivcs@100.90.209.9", "onion", "/tmp/project", 30*time.Second, false)
 	if re.Host != "aivcs@100.90.209.9" {

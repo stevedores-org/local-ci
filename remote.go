@@ -21,19 +21,26 @@ type execSSH struct {
 	connectTimeout time.Duration
 }
 
-func (e execSSH) execWithOutput(ctx context.Context, cmd string) (string, error) {
-	timeoutSec := int(e.connectTimeout.Seconds())
+// sshHardeningOpts returns the `-o` options applied to every ssh/rsync
+// transport. BatchMode=yes prevents hangs on interactive prompts (unknown host
+// key, password) in automation; StrictHostKeyChecking=accept-new pins a host's
+// key on first use and refuses a *changed* key (TOFU) rather than deferring to
+// ambient ssh_config. ConnectTimeout bounds the connect phase.
+func sshHardeningOpts(connectTimeout time.Duration) []string {
+	timeoutSec := int(connectTimeout.Seconds())
 	if timeoutSec < 1 {
 		timeoutSec = 10
 	}
-	sshCmd := exec.CommandContext(
-		ctx,
-		"ssh",
-		"-o",
-		fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
-		e.host,
-		cmd,
-	)
+	return []string{
+		"-o", "BatchMode=yes",
+		"-o", "StrictHostKeyChecking=accept-new",
+		"-o", fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
+	}
+}
+
+func (e execSSH) execWithOutput(ctx context.Context, cmd string) (string, error) {
+	args := append(sshHardeningOpts(e.connectTimeout), e.host, cmd)
+	sshCmd := exec.CommandContext(ctx, "ssh", args...)
 
 	var stdout, stderr bytes.Buffer
 	sshCmd.Stdout = &stdout
@@ -313,6 +320,8 @@ func (re *RemoteExecutor) SyncWorkspace(ctx context.Context, localDir string, sk
 	}
 
 	rsyncArgs := []string{"-az", "--delete"}
+	// Apply the same host-key/batch hardening to rsync's ssh transport.
+	rsyncArgs = append(rsyncArgs, "-e", "ssh "+strings.Join(sshHardeningOpts(re.Timeout), " "))
 	rsyncArgs = append(rsyncArgs, "--exclude", ".git", "--exclude", ".local-ci-cache")
 
 	for _, dir := range skipDirs {
