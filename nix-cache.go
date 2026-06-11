@@ -87,15 +87,30 @@ func parseSubstitutersFromConf(confPath string) []string {
 	return caches
 }
 
+// normalizeCacheURL trims trailing slashes for exact substituter comparison.
+func normalizeCacheURL(url string) string {
+	return strings.TrimRight(strings.TrimSpace(url), "/")
+}
+
+// getInstalledCachesHook is set in tests to avoid reading nix.conf.
+var getInstalledCachesHook func() ([]string, error)
+
 // IsCacheInstalled checks if a specific cache is already configured
 func IsCacheInstalled(cacheURL string) bool {
-	installed, err := GetInstalledCaches()
+	var installed []string
+	var err error
+	if getInstalledCachesHook != nil {
+		installed, err = getInstalledCachesHook()
+	} else {
+		installed, err = GetInstalledCaches()
+	}
 	if err != nil {
 		return false
 	}
 
+	want := normalizeCacheURL(cacheURL)
 	for _, cache := range installed {
-		if strings.Contains(cache, cacheURL) || strings.Contains(cacheURL, cache) {
+		if normalizeCacheURL(cache) == want {
 			return true
 		}
 	}
