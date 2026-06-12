@@ -10,12 +10,12 @@ import (
 type ProjectType string
 
 const (
-	ProjectTypeRust    ProjectType = "rust"
-	ProjectTypePython  ProjectType = "python"
-	ProjectTypeNode    ProjectType = "node"
-	ProjectTypeGo      ProjectType = "go"
-	ProjectTypeJava    ProjectType = "java"
-	ProjectTypeGeneric ProjectType = "generic"
+	ProjectTypeRust       ProjectType = "rust"
+	ProjectTypePython     ProjectType = "python"
+	ProjectTypeTypeScript ProjectType = "typescript"
+	ProjectTypeGo         ProjectType = "go"
+	ProjectTypeJava       ProjectType = "java"
+	ProjectTypeGeneric    ProjectType = "generic"
 )
 
 // DetectProjectType analyzes the project root and determines its type
@@ -32,9 +32,9 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypePython
 	}
 
-	// Check for Node.js project files
+	// Check for TypeScript/Bun project files
 	if fileExists(filepath.Join(root, "package.json")) {
-		return ProjectTypeNode
+		return ProjectTypeTypeScript
 	}
 
 	// Check for Go project files
@@ -58,8 +58,8 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 		return getRustStages()
 	case ProjectTypePython:
 		return getPythonStages()
-	case ProjectTypeNode:
-		return getNodeStages()
+	case ProjectTypeTypeScript:
+		return defaultTypeScriptStages()
 	case ProjectTypeGo:
 		return getGoStages()
 	case ProjectTypeJava:
@@ -201,41 +201,6 @@ func getPythonStages() map[string]Stage {
 	}
 }
 
-// getNodeStages returns Node.js specific stages
-func getNodeStages() map[string]Stage {
-	return map[string]Stage{
-		"lint": {
-			Name:      "lint",
-			Cmd:       []string{"npm", "run", "lint"},
-			FixCmd:    []string{"npm", "run", "lint", "--", "--fix"},
-			Check:     false,
-			Timeout:   300,
-			Enabled:   false,
-			DependsOn: []string{},
-			Watch:     []string{"*.js", "*.ts", "*.json"},
-		},
-		"test": {
-			Name:      "test",
-			Cmd:       []string{"npm", "test"},
-			FixCmd:    nil,
-			Check:     false,
-			Timeout:   600,
-			Enabled:   false,
-			DependsOn: []string{},
-			Watch:     []string{"*.js", "*.ts", "*.json"},
-		},
-		"build": {
-			Name:      "build",
-			Cmd:       []string{"npm", "run", "build"},
-			FixCmd:    nil,
-			Check:     false,
-			Timeout:   600,
-			Enabled:   false,
-			DependsOn: []string{},
-			Watch:     []string{"*.js", "*.ts", "*.json"},
-		},
-	}
-}
 
 // getGoStages returns Go specific stages
 func getGoStages() map[string]Stage {
@@ -322,8 +287,8 @@ func GetCachePatternForType(projectType ProjectType) []string {
 		return []string{"*.rs", "*.toml", "*.lock"}
 	case ProjectTypePython:
 		return []string{"*.py", "*.toml", "*.txt", "*.yml", "*.yaml"}
-	case ProjectTypeNode:
-		return []string{"*.js", "*.ts", "*.json", "package.json", "tsconfig.json"}
+	case ProjectTypeTypeScript:
+		return defaultTSCacheConfig().IncludePatterns
 	case ProjectTypeGo:
 		return []string{"*.go", "go.mod", "go.sum"}
 	case ProjectTypeJava:
@@ -342,8 +307,8 @@ func GetSkipDirsForType(projectType ProjectType) []string {
 		return append(baseSkip, "target")
 	case ProjectTypePython:
 		return append(baseSkip, ".pytest_cache", "__pycache__", ".mypy_cache")
-	case ProjectTypeNode:
-		return append(baseSkip, "node_modules", "dist", "build")
+	case ProjectTypeTypeScript:
+		return defaultTSCacheConfig().SkipDirs
 	case ProjectTypeGo:
 		return append(baseSkip, "vendor")
 	case ProjectTypeJava:
@@ -366,8 +331,8 @@ func GetConfigTemplateForType(projectType ProjectType) string {
 		return getRustConfigTemplate()
 	case ProjectTypePython:
 		return getPythonConfigTemplate()
-	case ProjectTypeNode:
-		return getNodeConfigTemplate()
+	case ProjectTypeTypeScript:
+		return getTypeScriptConfigTemplate()
 	case ProjectTypeGo:
 		return getGoConfigTemplate()
 	case ProjectTypeJava:
@@ -446,37 +411,6 @@ exclude = []
 `
 }
 
-func getNodeConfigTemplate() string {
-	return `# local-ci configuration for Node.js project
-# See: https://github.com/stevedores-org/local-ci
-
-[cache]
-skip_dirs = [".git", ".github", "scripts", ".claude", "node_modules", "dist", "build"]
-include_patterns = ["*.js", "*.ts", "*.json", "package.json", "tsconfig.json"]
-
-[stages.lint]
-command = ["npm", "run", "lint"]
-fix_command = ["npm", "run", "lint", "--", "--fix"]
-timeout = 300
-enabled = false
-
-[stages.test]
-command = ["npm", "test"]
-timeout = 600
-enabled = false
-
-[stages.build]
-command = ["npm", "run", "build"]
-timeout = 600
-enabled = false
-
-[dependencies]
-optional = []
-
-[workspace]
-exclude = []
-`
-}
 
 func getGoConfigTemplate() string {
 	return `# local-ci configuration for Go project
@@ -543,7 +477,7 @@ func getGenericConfigTemplate() string {
 # Define your custom stages below. Example:
 #
 # [stages.test]
-# command = ["npm", "test"]
+# command = ["bun", "test"]
 # timeout = 600
 # enabled = true
 

@@ -1,7 +1,7 @@
 // local-ci — Universal local CI runner for any project type.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust, Python, Node.js, Go, Java, and other projects.
+// for Rust, Python, TypeScript/Bun, Go, Java, and other projects.
 // Auto-detects project type and applies language-specific defaults.
 //
 // Supports file-hash caching, configuration files, and colored output.
@@ -20,7 +20,7 @@
 // Supported project types:
 //   - Rust (Cargo.toml)
 //   - Python (pyproject.toml, setup.py, requirements.txt)
-//   - Node.js (package.json)
+//   - TypeScript/Bun (package.json)
 //   - Go (go.mod)
 //   - Java (pom.xml, build.gradle)
 //   - Generic (custom commands via .local-ci.toml)
@@ -41,7 +41,7 @@ import (
 	"time"
 )
 
-var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
+var version = "0.3.0" // Universal project support (Rust, Python, TypeScript, Go, Java, etc.)
 
 type Stage struct {
 	Name      string
@@ -113,7 +113,7 @@ func main() {
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "local-ci v%s — Universal local CI for any project\n\n", version)
-		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, Node.js, Go, Java, and custom projects\n\n")
+		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, TypeScript/Bun, Go, Java, and custom projects\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")

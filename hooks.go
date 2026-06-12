@@ -20,8 +20,8 @@ func getPreCommitHookTemplate(root string) string {
 		stagesCmd = "format lint"
 	case ProjectTypeGo:
 		stagesCmd = "fmt vet"
-	case ProjectTypeNode:
-		stagesCmd = "lint"
+	case ProjectTypeTypeScript:
+		stagesCmd = "install typecheck lint"
 	case ProjectTypeJava:
 		stagesCmd = "build"
 	default:

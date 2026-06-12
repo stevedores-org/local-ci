@@ -67,37 +67,55 @@ func DetectTypeScriptWorkspace(root string) (*Workspace, error) {
 // so projects can use eslint, biome, prettier, or any other tool.
 func defaultTypeScriptStages() map[string]Stage {
 	return map[string]Stage{
+		"install": {
+			Name:      "install",
+			Cmd:       []string{"bun", "install"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   300,
+			Enabled:   true,
+			DependsOn: []string{},
+			Watch:     []string{"package.json", "bun.lock", "bun.lockb"},
+		},
 		"typecheck": {
-			Name:    "typecheck",
-			Cmd:     []string{"bun", "x", "tsc", "--noEmit"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 120,
-			Enabled: true,
+			Name:      "typecheck",
+			Cmd:       []string{"bun", "x", "tsc", "--noEmit"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   120,
+			Enabled:   true,
+			DependsOn: []string{"install"},
+			Watch:     []string{"*.ts", "*.tsx", "*.json"},
 		},
 		"lint": {
-			Name:    "lint",
-			Cmd:     []string{"bun", "run", "lint"},
-			FixCmd:  []string{"bun", "run", "lint", "--", "--fix"},
-			Check:   false,
-			Timeout: 300,
-			Enabled: true,
+			Name:      "lint",
+			Cmd:       []string{"bun", "run", "lint"},
+			FixCmd:    []string{"bun", "run", "lint", "--", "--fix"},
+			Check:     false,
+			Timeout:   300,
+			Enabled:   true,
+			DependsOn: []string{"install"},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 		"test": {
-			Name:    "test",
-			Cmd:     []string{"bun", "test"},
-			FixCmd:  nil,
-			Check:   false,
-			Timeout: 600,
-			Enabled: true,
+			Name:      "test",
+			Cmd:       []string{"bun", "test"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   600,
+			Enabled:   true,
+			DependsOn: []string{"install"},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 		"format": {
-			Name:    "format",
-			Cmd:     []string{"bun", "run", "format", "--check"},
-			FixCmd:  []string{"bun", "run", "format"},
-			Check:   true,
-			Timeout: 120,
-			Enabled: false, // disabled by default, optional
+			Name:      "format",
+			Cmd:       []string{"bun", "run", "format", "--check"},
+			FixCmd:    []string{"bun", "run", "format"},
+			Check:     true,
+			Timeout:   120,
+			Enabled:   false, // disabled by default, optional
+			DependsOn: []string{"install"},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 	}
 }
@@ -106,7 +124,7 @@ func defaultTypeScriptStages() map[string]Stage {
 func defaultTSCacheConfig() CacheConfig {
 	return CacheConfig{
 		SkipDirs:        []string{".git", "node_modules", "dist", ".next", "coverage", ".claude"},
-		IncludePatterns: []string{"*.ts", "*.tsx", "*.js", "*.jsx", "*.json"},
+		IncludePatterns: []string{"*.ts", "*.tsx", "*.js", "*.jsx", "*.json", "package.json", "tsconfig.json", "bunfig.toml", "bun.lock", "bun.lockb"},
 	}
 }
 
@@ -125,15 +143,9 @@ func defaultTypeScriptConfig() *Config {
 	}
 }
 
-// SaveDefaultTypeScriptConfig writes a .local-ci.toml for TypeScript/Bun projects.
-func SaveDefaultTypeScriptConfig(root string) error {
-	configPath := filepath.Join(root, ".local-ci.toml")
-
-	if _, err := os.Stat(configPath); err == nil {
-		return nil // Don't overwrite existing config
-	}
-
-	content := `# local-ci configuration for TypeScript/Bun projects
+// getTypeScriptConfigTemplate returns the TOML configuration template for TypeScript/Bun projects.
+func getTypeScriptConfigTemplate() string {
+	return `# local-ci configuration for TypeScript/Bun projects
 # See: https://github.com/stevedores-org/local-ci
 # Runtime: bun
 #
@@ -145,13 +157,19 @@ func SaveDefaultTypeScriptConfig(root string) error {
 # Directories to skip when computing source hash
 skip_dirs = [".git", "node_modules", "dist", ".next", "coverage", ".claude"]
 # File patterns to include in hash
-include_patterns = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.json"]
+include_patterns = ["*.ts", "*.tsx", "*.js", "*.jsx", "*.json", "package.json", "tsconfig.json", "bunfig.toml", "bun.lock", "bun.lockb"]
+
+[stages.install]
+command = ["bun", "install"]
+timeout = 300
+enabled = true
 
 [stages.typecheck]
 # Uses bun x to auto-resolve tsc (requires typescript as a dependency)
 command = ["bun", "x", "tsc", "--noEmit"]
 timeout = 120
 enabled = true
+depends_on = ["install"]
 
 [stages.lint]
 # Delegates to package.json "lint" script
@@ -159,11 +177,13 @@ command = ["bun", "run", "lint"]
 fix_command = ["bun", "run", "lint", "--", "--fix"]
 timeout = 300
 enabled = true
+depends_on = ["install"]
 
 [stages.test]
 command = ["bun", "test"]
 timeout = 600
 enabled = true
+depends_on = ["install"]
 
 [stages.format]
 # Delegates to package.json "format" script
@@ -171,6 +191,7 @@ command = ["bun", "run", "format", "--check"]
 fix_command = ["bun", "run", "format"]
 timeout = 120
 enabled = false
+depends_on = ["install"]
 
 [dependencies]
 required = []
@@ -179,5 +200,16 @@ optional = []
 [workspace]
 exclude = []
 `
+}
+
+// SaveDefaultTypeScriptConfig writes a .local-ci.toml for TypeScript/Bun projects.
+func SaveDefaultTypeScriptConfig(root string) error {
+	configPath := filepath.Join(root, ".local-ci.toml")
+
+	if _, err := os.Stat(configPath); err == nil {
+		return nil // Don't overwrite existing config
+	}
+
+	content := getTypeScriptConfigTemplate()
 	return os.WriteFile(configPath, []byte(content), 0644)
 }

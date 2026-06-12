@@ -36,7 +36,7 @@ func DetectWorkspace(root string) (*Workspace, error) {
 		return detectCargoWorkspace(root)
 	}
 
-	// Try package.json (TypeScript/Node)
+	// Try package.json (TypeScript/Bun)
 	packagePath := filepath.Join(root, "package.json")
 	if _, err := os.Stat(packagePath); err == nil {
 		return DetectTypeScriptWorkspace(root)
