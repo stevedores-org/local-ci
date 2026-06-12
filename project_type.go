@@ -231,41 +231,52 @@ func getPythonStages() map[string]Stage {
 	}
 }
 
-// getNodeStages returns Node.js specific stages
+// getNodeStages returns Node.js specific stages (using bun)
 func getNodeStages() map[string]Stage {
 	return map[string]Stage{
+		"typecheck": {
+			Name:      "typecheck",
+			Cmd:       []string{"bun", "x", "tsc", "--noEmit"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   120,
+			Enabled:   true,
+			DependsOn: []string{},
+			Watch:     []string{"*.js", "*.ts", "*.json"},
+		},
 		"lint": {
 			Name:      "lint",
-			Cmd:       []string{"npm", "run", "lint"},
-			FixCmd:    []string{"npm", "run", "lint", "--", "--fix"},
+			Cmd:       []string{"bun", "run", "lint"},
+			FixCmd:    []string{"bun", "run", "lint", "--", "--fix"},
 			Check:     false,
 			Timeout:   300,
-			Enabled:   false,
+			Enabled:   true,
 			DependsOn: []string{},
 			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 		"test": {
 			Name:      "test",
-			Cmd:       []string{"npm", "test"},
+			Cmd:       []string{"bun", "test"},
 			FixCmd:    nil,
 			Check:     false,
 			Timeout:   600,
-			Enabled:   false,
+			Enabled:   true,
 			DependsOn: []string{},
 			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 		"build": {
 			Name:      "build",
-			Cmd:       []string{"npm", "run", "build"},
+			Cmd:       []string{"bun", "run", "build"},
 			FixCmd:    nil,
 			Check:     false,
 			Timeout:   600,
-			Enabled:   false,
+			Enabled:   true,
 			DependsOn: []string{},
 			Watch:     []string{"*.js", "*.ts", "*.json"},
 		},
 	}
 }
+
 
 // getGoStages returns Go specific stages
 func getGoStages() map[string]Stage {
@@ -552,28 +563,33 @@ exclude = []
 }
 
 func getNodeConfigTemplate() string {
-	return `# local-ci configuration for Node.js project
+	return `# local-ci configuration for TypeScript/Bun project
 # See: https://github.com/stevedores-org/local-ci
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", "node_modules", "dist", "build"]
 include_patterns = ["*.js", "*.ts", "*.json", "package.json", "tsconfig.json"]
 
+[stages.typecheck]
+command = ["bun", "x", "tsc", "--noEmit"]
+timeout = 120
+enabled = true
+
 [stages.lint]
-command = ["npm", "run", "lint"]
-fix_command = ["npm", "run", "lint", "--", "--fix"]
+command = ["bun", "run", "lint"]
+fix_command = ["bun", "run", "lint", "--", "--fix"]
 timeout = 300
-enabled = false
+enabled = true
 
 [stages.test]
-command = ["npm", "test"]
+command = ["bun", "test"]
 timeout = 600
-enabled = false
+enabled = true
 
 [stages.build]
-command = ["npm", "run", "build"]
+command = ["bun", "run", "build"]
 timeout = 600
-enabled = false
+enabled = true
 
 [dependencies]
 optional = []
@@ -648,7 +664,7 @@ func getGenericConfigTemplate() string {
 # Define your custom stages below. Example:
 #
 # [stages.test]
-# command = ["npm", "test"]
+# command = ["bun", "test"]
 # timeout = 600
 # enabled = true
 
