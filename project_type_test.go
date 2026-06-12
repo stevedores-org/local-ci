@@ -117,14 +117,14 @@ func TestGetDefaultStagesForPython(t *testing.T) {
 	}
 }
 
-// TestGetDefaultStagesForNode verifies Node.js-specific stages
+// TestGetDefaultStagesForNode verifies Node.js/Bun-specific stages
 func TestGetDefaultStagesForNode(t *testing.T) {
 	stages := GetDefaultStagesForType(ProjectTypeNode)
 
-	expectedStages := []string{"lint", "test", "build"}
+	expectedStages := []string{"typecheck", "lint", "test", "build"}
 	for _, stageName := range expectedStages {
 		if _, exists := stages[stageName]; !exists {
-			t.Errorf("Expected stage %s not found for Node", stageName)
+			t.Errorf("Expected stage %s not found for Node/Bun", stageName)
 		}
 	}
 }
