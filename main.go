@@ -54,6 +54,88 @@ type Stage struct {
 	Watch     []string // file patterns this stage cares about (for granular caching)
 }
 
+func (s *Stage) UnmarshalTOML(data interface{}) error {
+	m, ok := data.(map[string]interface{})
+	if !ok {
+		return nil
+	}
+
+	// Helper to extract string slice
+	getStringSlice := func(key string) []string {
+		if val, exists := m[key]; exists {
+			if list, ok := val.([]interface{}); ok {
+				var res []string
+				for _, item := range list {
+					if str, ok := item.(string); ok {
+						res = append(res, str)
+					}
+				}
+				return res
+			}
+		}
+		return nil
+	}
+
+	// Helper to extract bool
+	getBool := func(key string) bool {
+		if val, exists := m[key]; exists {
+			if b, ok := val.(bool); ok {
+				return b
+			}
+		}
+		return false
+	}
+
+	// Helper to extract int
+	getInt := func(key string) int {
+		if val, exists := m[key]; exists {
+			switch v := val.(type) {
+			case int:
+				return v
+			case int64:
+				return int(v)
+			case float64:
+				return int(v)
+			}
+		}
+		return 0
+	}
+
+	// Helper to extract string
+	getString := func(key string) string {
+		if val, exists := m[key]; exists {
+			if str, ok := val.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
+
+	if name := getString("name"); name != "" {
+		s.Name = name
+	}
+
+	s.Cmd = getStringSlice("command")
+	if len(s.Cmd) == 0 {
+		s.Cmd = getStringSlice("cmd")
+	}
+	s.FixCmd = getStringSlice("fix_command")
+	if len(s.FixCmd) == 0 {
+		s.FixCmd = getStringSlice("fix_cmd")
+	}
+	s.Check = getBool("check")
+	s.Timeout = getInt("timeout")
+	if val, exists := m["enabled"]; exists {
+		if b, ok := val.(bool); ok {
+			s.Enabled = b
+		}
+	}
+	s.DependsOn = getStringSlice("depends_on")
+	s.Watch = getStringSlice("watch")
+
+	return nil
+}
+
 type Result struct {
 	Name     string
 	Command  string
@@ -97,18 +179,23 @@ func toJSONResults(results []Result) []ResultJSON {
 
 func main() {
 	var (
-		flagNoCache  = flag.Bool("no-cache", false, "Disable file hash cache")
-		flagVerbose  = flag.Bool("verbose", false, "Show detailed output")
-		flagFix      = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
-		flagList     = flag.Bool("list", false, "List available stages")
-		flagVersion  = flag.Bool("version", false, "Print version")
-		flagAll      = flag.Bool("all", false, "Run all stages including disabled ones")
-		flagRemote   = flag.Bool("remote", false, "Load remote config from .local-ci-remote.toml")
-		flagProfile  = flag.String("profile", "", "Use a named profile from config")
-		flagDryRun   = flag.Bool("dry-run", false, "Show what would run without executing")
-		flagParallel = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
-		flagJSON     = flag.Bool("json", false, "Output in JSON format")
-		flagFailFast = flag.Bool("fail-fast", false, "Stop on first failure")
+		flagNoCache         = flag.Bool("no-cache", false, "Disable file hash cache")
+		flagVerbose         = flag.Bool("verbose", false, "Show detailed output")
+		flagFix             = flag.Bool("fix", false, "Auto-fix issues (cargo fmt)")
+		flagList            = flag.Bool("list", false, "List available stages")
+		flagListRemoteHosts = flag.Bool("list-remote-hosts", false, "List named remote host presets from .local-ci-remote.toml")
+		flagVersion         = flag.Bool("version", false, "Print version")
+		flagAll             = flag.Bool("all", false, "Run all stages including disabled ones")
+		flagRemote          = flag.String("remote", "", "Run remotely on specified SSH host (e.g., user@host)")
+		flagRemoteHost      = flag.String("remote-host", "", "Run remotely using a named preset from .local-ci-remote.toml (`[hosts.<name>]`)")
+		flagSession         = flag.String("session", "onion", "tmux session name for remote execution")
+		flagRemoteTimeout   = flag.Int("remote-timeout", 30, "SSH operation timeout in seconds")
+		flagRemoteDir       = flag.String("remote-dir", "", "Remote working directory (defaults to /tmp/<basename>)")
+		flagProfile         = flag.String("profile", "", "Use a named profile from config")
+		flagDryRun          = flag.Bool("dry-run", false, "Show what would run without executing")
+		flagParallel        = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
+		flagJSON            = flag.Bool("json", false, "Output in JSON format")
+		flagFailFast        = flag.Bool("fail-fast", false, "Stop on first failure")
 	)
 
 	flag.Usage = func() {
@@ -152,16 +239,71 @@ func main() {
 			return
 		}
 	}
-	if len(args) > 0 && args[0] == "serve" {
-		if err := cmdServe(cwd); err != nil {
-			fatalf("MCP server error: %v", err)
+
+	// Load configuration. Pull the remote overlay whenever remote mode or
+	// preset listing is requested — `--remote-host` resolves [hosts.*].
+	needRemoteCfg := *flagRemote != "" || *flagRemoteHost != "" || *flagListRemoteHosts
+	config, err := LoadConfig(cwd, needRemoteCfg)
+	if err != nil {
+		fatalf("Failed to load config: %v", err)
+	}
+
+	if *flagListRemoteHosts {
+		hosts := config.ListRemoteHosts()
+		if len(hosts) == 0 {
+			fmt.Println("No remote host presets defined. Add [hosts.<name>] to .local-ci-remote.toml")
+			return
+		}
+		for _, h := range hosts {
+			line := fmt.Sprintf("%s  host=%s", h.Name, h.Host)
+			if h.Session != "" {
+				line += fmt.Sprintf("  session=%s", h.Session)
+			}
+			if h.RemoteDir != "" {
+				line += fmt.Sprintf("  remote_dir=%s", h.RemoteDir)
+			}
+			if h.Description != "" {
+				line += fmt.Sprintf("  # %s", h.Description)
+			}
+			fmt.Println(line)
+		}
+		return
+	}
+
+	// Resolve `--remote-host <name>` into the underlying ssh/session/dir
+	// values. Explicit CLI flags always win over preset fields, so e.g.
+	// `--remote-host aivcs2 --session experiment` reuses the preset's host
+	// but overrides its session for this one run.
+	if *flagRemoteHost != "" {
+		userSetSession := false
+		userSetRemoteDir := false
+		flag.Visit(func(f *flag.Flag) {
+			switch f.Name {
+			case "session":
+				userSetSession = true
+			case "remote-dir":
+				userSetRemoteDir = true
+			}
+		})
+		resolved, err := config.ResolveRemoteHost(
+			*flagRemoteHost,
+			*flagRemote, *flagSession, *flagRemoteDir,
+			userSetSession, userSetRemoteDir,
+		)
+		if err != nil {
+			fatalf("%v", err)
+		}
+		*flagRemote = resolved.Host
+		*flagSession = resolved.Session
+		*flagRemoteDir = resolved.RemoteDir
+		if *flagVerbose {
+			printf("📍 Using host preset %q → %s\n", *flagRemoteHost, *flagRemote)
 		}
 	}
 
-	// Load configuration
-	config, err := LoadConfig(cwd, *flagRemote)
-	if err != nil {
-		fatalf("Failed to load config: %v", err)
+	// Expand bare `--remote discovery` hostnames via ssh_defaults (macOS default).
+	if *flagRemote != "" && !strings.Contains(*flagRemote, "@") {
+		*flagRemote = NormalizeSSHHost(*flagRemote, remotePlatformMacOS, config.SSHDefaults)
 	}
 
 	// Apply profile if specified
@@ -233,11 +375,21 @@ func main() {
 		}
 	}
 
-	// If --all, include disabled stages
+	// If --all, run every configured stage including disabled ones.
+	// (Disabled stages are never added above, so rebuild the list from all
+	// configured stages and force them enabled.)
 	if *flagAll {
-		for _, stage := range stages {
-			if !stage.Enabled {
+		if len(flag.Args()) == 0 {
+			stages = stages[:0]
+			for _, name := range config.GetAllStages() {
+				stage := stageMap[name]
+				stage.Name = name
 				stage.Enabled = true
+				stages = append(stages, stage)
+			}
+		} else {
+			for i := range stages {
+				stages[i].Enabled = true
 			}
 		}
 	}
@@ -269,9 +421,27 @@ func main() {
 		cache = make(map[string]string)
 	}
 
+	stageHashes, stageHashErr := computeStageHashes(cwd, config, ws, stages)
+	if stageHashErr != nil && *flagVerbose {
+		warnf("Warning: per-stage hash computation failed: %v\n", stageHashErr)
+	}
+
 	// Handle dry-run mode
 	if *flagDryRun {
-		report := BuildDryRunReport(stages, cache, sourceHash, *flagNoCache)
+		var remote *DryRunRemote
+		if *flagRemote != "" {
+			workDir := *flagRemoteDir
+			if workDir == "" {
+				workDir = filepath.Join("/tmp", filepath.Base(cwd))
+			}
+			remote = &DryRunRemote{
+				Host:       *flagRemote,
+				Session:    *flagSession,
+				WorkDir:    workDir,
+				HostPreset: *flagRemoteHost,
+			}
+		}
+		report := BuildDryRunReport(stages, cache, stageHashes, sourceHash, *flagNoCache, remote)
 		if *flagJSON {
 			PrintDryRunJSON(report)
 		} else {
@@ -286,6 +456,9 @@ func main() {
 
 	// Use parallel runner if requested
 	if *flagParallel > 0 {
+		if *flagRemote != "" {
+			fatalf("Cannot use --parallel and --remote together; run remote stages sequentially")
+		}
 		runner := &ParallelRunner{
 			Stages:      stages,
 			Concurrency: *flagParallel,
@@ -293,14 +466,38 @@ func main() {
 			NoCache:     *flagNoCache,
 			Cache:       cache,
 			SourceHash:  sourceHash,
+			StageHashes: stageHashes,
 			Verbose:     *flagVerbose,
 			JSON:        *flagJSON,
 			FailFast:    *flagFailFast,
 		}
 		results = runner.Run()
-	} else {
-		// Sequential execution
-		printf("🚀 Running local CI pipeline...\n\n")
+	} else if *flagRemote != "" {
+		// Remote sequential execution via SSH+tmux
+		workDir := *flagRemoteDir
+		if workDir == "" {
+			workDir = filepath.Join("/tmp", filepath.Base(cwd))
+		}
+		re := NewRemoteExecutor(*flagRemote, *flagSession, workDir, time.Duration(*flagRemoteTimeout)*time.Second, *flagVerbose)
+
+		// Sync local workspace to remote
+		printf("🔄 Synchronizing local workspace to remote...\n")
+		syncCtx, syncCancel := context.WithTimeout(context.Background(), 2*time.Minute)
+		if err := re.SyncWorkspace(syncCtx, cwd, config.Cache.SkipDirs); err != nil {
+			syncCancel()
+			fatalf("Failed to sync workspace to remote: %v", err)
+		}
+		syncCancel()
+
+		printf("🚀 Running local CI pipeline remotely on %s...\n\n", *flagRemote)
+
+		// Ensure remote session exists
+		ctx, cancel := context.WithTimeout(context.Background(), re.Timeout)
+		if err := re.EnsureRemoteSession(ctx); err != nil {
+			cancel()
+			fatalf("Failed to initialize remote tmux session: %v", err)
+		}
+		cancel()
 
 		for _, stage := range stages {
 			stageStart := time.Now()
@@ -308,15 +505,22 @@ func main() {
 			// Compute per-stage hash for granular caching
 			stageHash := sourceHash
 			if len(stage.Watch) > 0 {
-				var err error
-				stageHash, err = computeStageHash(stage, cwd, config, ws)
-				if err != nil && *flagVerbose {
-					warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+				if h, ok := stageHashes[stage.Name]; ok {
+					stageHash = h
+				} else {
+					var err error
+					stageHash, err = computeStageHash(stage, cwd, config, ws)
+					if err != nil {
+						if *flagVerbose {
+							warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+						}
+						stageHash = ""
+					}
 				}
 			}
 
-			// Check cache using per-stage hash
-			if !*flagNoCache && cache[stage.Name] == stageHash {
+			// Check local cache
+			if !*flagNoCache && cacheHit(cache, stage, stageHash) {
 				if *flagVerbose {
 					printf("✓ %s (cached)\n", stage.Name)
 				}
@@ -331,6 +535,110 @@ func main() {
 
 			// Print stage header
 			printf("::group::%s\n", stage.Name)
+			if len(stage.Cmd) == 0 {
+				printf("Error: Stage has no command defined\n")
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "fail",
+					Duration: 0,
+					Error:    fmt.Errorf("no command defined"),
+				})
+				if *flagFailFast {
+					break
+				}
+				continue
+			}
+			if *flagVerbose {
+				cmdStr := strings.Join(stage.Cmd, " ")
+				printf("$ %s\n", cmdStr)
+			}
+
+			// Run stage remotely
+			result := re.ExecuteStage(stage)
+			duration := time.Since(stageStart)
+			result.Duration = duration // set actual local time spent
+
+			if result.Status == "fail" {
+				if result.Output != "" {
+					printf("%s\n", result.Output)
+				} else if result.Error != nil {
+					printf("Error: %v\n", result.Error)
+				}
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, result)
+				if *flagFailFast {
+					break
+				}
+			} else {
+				if *flagVerbose && result.Output != "" {
+					printf("%s\n", result.Output)
+				}
+				printf("::endgroup::\n")
+				printf("✓ %s (%dms)\n", stage.Name, result.Duration.Milliseconds())
+				results = append(results, result)
+				// Update cache
+				cache[stage.Name] = cacheKeyForStage(stage, stageHash)
+			}
+		}
+	} else {
+		// Sequential execution
+		printf("🚀 Running local CI pipeline...\n\n")
+
+		for _, stage := range stages {
+			stageStart := time.Now()
+
+			// Compute per-stage hash for granular caching
+			stageHash := sourceHash
+			if len(stage.Watch) > 0 {
+				if h, ok := stageHashes[stage.Name]; ok {
+					stageHash = h
+				} else {
+					var err error
+					stageHash, err = computeStageHash(stage, cwd, config, ws)
+					if err != nil {
+						if *flagVerbose {
+							warnf("Stage hash computation failed for %s: %v\n", stage.Name, err)
+						}
+						stageHash = ""
+					}
+				}
+			}
+
+			// Check cache using per-stage hash
+			if !*flagNoCache && cacheHit(cache, stage, stageHash) {
+				if *flagVerbose {
+					printf("✓ %s (cached)\n", stage.Name)
+				}
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "pass",
+					CacheHit: true,
+					Duration: 0,
+				})
+				continue
+			}
+
+			// Print stage header
+			printf("::group::%s\n", stage.Name)
+			if len(stage.Cmd) == 0 {
+				printf("Error: Stage has no command defined\n")
+				printf("::endgroup::\n")
+				printf("✗ %s (failed)\n", stage.Name)
+				results = append(results, Result{
+					Name:     stage.Name,
+					Status:   "fail",
+					Duration: 0,
+					Error:    fmt.Errorf("no command defined"),
+				})
+				if *flagFailFast {
+					break
+				}
+				continue
+			}
+
 			if *flagVerbose {
 				cmdStr := strings.Join(stage.Cmd, " ")
 				printf("$ %s\n", cmdStr)
@@ -377,7 +685,7 @@ func main() {
 					Output:   out.String(),
 				})
 				// Update cache with per-stage hash
-				cache[stage.Name] = stageHash
+				cache[stage.Name] = cacheKeyForStage(stage, stageHash)
 			}
 		}
 	}
@@ -513,19 +821,7 @@ func computeSourceHash(root string, config *Config, ws *Workspace) (string, erro
 
 		// Hash files matching include patterns
 		if !d.IsDir() {
-			shouldHash := false
-			for _, pattern := range config.Cache.IncludePatterns {
-				// Simple pattern matching: *.rs, *.toml
-				if strings.HasPrefix(pattern, "*.") {
-					ext := pattern[1:] // Get .rs or .toml
-					if strings.HasSuffix(d.Name(), ext) {
-						shouldHash = true
-						break
-					}
-				}
-			}
-
-			if shouldHash {
+			if matchesPatterns(d.Name(), config.Cache.IncludePatterns) {
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return nil // Skip unreadable files
@@ -584,27 +880,7 @@ func computeStageHash(stage Stage, root string, config *Config, ws *Workspace) (
 
 		// Hash files matching watch patterns
 		if !d.IsDir() {
-			shouldHash := false
-			for _, pattern := range stage.Watch {
-				// Simple pattern matching: *.rs, *.toml
-				if strings.HasPrefix(pattern, "*.") {
-					ext := pattern[1:] // Get .rs or .toml
-					if strings.HasSuffix(d.Name(), ext) {
-						shouldHash = true
-						break
-					}
-				} else if pattern == "*" {
-					// Match all files
-					shouldHash = true
-					break
-				} else if d.Name() == pattern {
-					// Exact filename match
-					shouldHash = true
-					break
-				}
-			}
-
-			if shouldHash {
+			if matchesPatterns(d.Name(), stage.Watch) {
 				data, err := os.ReadFile(path)
 				if err != nil {
 					return nil // Skip unreadable files
@@ -638,7 +914,7 @@ func loadCache(root string) (map[string]string, error) {
 		if line == "" {
 			continue
 		}
-		parts := strings.Split(line, ":")
+		parts := strings.SplitN(line, ":", 2)
 		if len(parts) == 2 {
 			cache[parts[0]] = parts[1]
 		}

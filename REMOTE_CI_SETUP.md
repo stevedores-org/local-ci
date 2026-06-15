@@ -383,6 +383,60 @@ $ # Still in tmux session 'onion'
 $ cargo build  # Run manual commands after CI
 ```
 
+## Tailscale (required for cluster nodes)
+
+Remote CI targets are on the **Tailscale tailnet**. SSH users are unified — see **[docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md)**:
+
+- **macOS** → `aivcs@<tailnet-name>`
+- **DGX Spark** → `aivcs2@spark-bde7` (`--remote-host sparky`)
+
+```bash
+tailscale status
+ssh aivcs@uranus echo ok
+ssh aivcs2@spark-bde7 echo ok
+
+local-ci --remote-host sparky fmt clippy test
+local-ci --remote-host uranus --dry-run
+```
+
+Presets use bare tailnet names; `[ssh_defaults]` in `.local-ci-remote.toml` supplies the user.
+
+## Named Host Presets
+
+If you regularly target the same nodes, define `[hosts.<name>]` entries in
+`.local-ci-remote.toml` (see `.local-ci-remote.toml.example`) and use
+`--remote-host <name>` instead of repeating ssh / session / remote-dir flags
+on every invocation:
+
+```toml
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
+[hosts.sparky]
+host        = "spark-bde7"
+platform    = "linux_spark"
+session     = "sparky-onion"
+remote_dir  = "/data/builds/local-ci"
+```
+
+```bash
+local-ci --remote-host sparky   # → aivcs2@spark-bde7
+```
+
+# Mix-and-match: reuse the host preset but override session for this run
+local-ci --remote-host sparky --session experiment
+```
+
+Precedence: an explicit CLI flag (`--remote`, `--session`, `--remote-dir`)
+always wins over the preset's value. The preset only fills in fields that
+the user did not pass. Unknown preset names produce an error listing the
+ones that *are* defined.
+
+### DGX Spark (sparky / spark-bde7) notes
+
+- SSH as **`aivcs2@spark-bde7`** — not `aivcs`. Preset: `--remote-host sparky` (alias: `--remote-host aivcs2`).
+
 ## Security Considerations
 
 - **SSH keys**: Use key-based auth only, no passwords

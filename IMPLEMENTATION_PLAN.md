@@ -26,32 +26,30 @@ local-ci --remote aivcs@100.90.209.9 fmt clippy
 ## Implementation Steps
 
 ### Phase 1: Add Flags to main.go
-- [ ] Add `--remote` flag (SSH host)
-- [ ] Add `--session` flag (tmux session name, default: "onion")
-- [ ] Add `--remote-timeout` flag (SSH operation timeout, default: 30s)
+- [x] Add `--remote` flag (SSH host)
+- [x] Add `--session` flag (tmux session name, default: "onion")
+- [x] Add `--remote-timeout` flag (SSH operation timeout, default: 30s)
+- [x] Add `--remote-dir` flag (remote working directory)
 
 ### Phase 2: Create remote.go
-- [ ] `RemoteExecutor` struct with SSH client config
-- [ ] `executeStageRemote(stage, cmd, host, session) → Result`
-- [ ] `runCommandInSession(host, session, cmd) → (output, exitCode, error)`
-- [ ] `pollExitCode(host, sentinel) → exitCode`
-- [ ] Sentinel file strategy: `/tmp/kc_exit_<task_id_hex>`
+- [x] `RemoteExecutor` struct with SSH client config
+- [x] `ExecuteStage(stage) → Result`
+- [x] `runInSession(host, session, cmd) → (output, error)`
+- [x] `pollExitCode(host, sentinel) → exitCode`
+- [x] Sentinel file strategy: `/tmp/kc_exit_<stage>_<nanos>`
 
 ### Phase 3: Modify main.go Execution
-- [ ] Route stage execution based on --remote flag
-- [ ] Local execution: current behavior (unchanged)
-- [ ] Remote execution: new RemoteExecutor path
-- [ ] Preserve output streaming and result collection
+- [x] Route stage execution based on --remote flag
+- [x] Local execution: current behavior (unchanged)
+- [x] Remote execution: new RemoteExecutor path
+- [x] Preserve output streaming and result collection
+- [x] Workspace sync via rsync before remote stages (#63)
+- [x] Named host presets via `--remote-host` (#64)
 
 ### Phase 4: Testing
-- [ ] Unit tests: SSH connection mocking
-- [ ] Integration test: Run against aivcs@100.90.209.9
-- [ ] Test cases:
-  - [ ] Successful stage execution
-  - [ ] Failed stage (non-zero exit code)
-  - [ ] Timeout handling
-  - [ ] SSH connection failure
-  - [ ] Multiple stages in sequence
+- [x] Unit tests: mock SSH (success, failure, connection error)
+- [x] Unit tests: shell quoting + discovery/uranus presets
+- [ ] Integration test: Run against live cluster nodes (operator smoke test)
 
 ## Files to Create/Modify
 

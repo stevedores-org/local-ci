@@ -49,6 +49,32 @@ func TestDetectProjectTypeTypeScript(t *testing.T) {
 	}
 }
 
+// TestDetectProjectTypeTypeScriptWinsOverPythonAndSwift verifies that an explicit
+// package.json takes precedence over Python/Swift markers a TypeScript repo may also
+// carry (regression for the precedence bug).
+func TestDetectProjectTypeTypeScriptWinsOverPythonAndSwift(t *testing.T) {
+	cases := map[string]string{
+		"requirements.txt": "requests==2.0",
+		"setup.py":         "from setuptools import setup",
+		"pyproject.toml":   "[project]",
+		"Package.swift":    "// swift-tools-version:5.9",
+	}
+	for marker, content := range cases {
+		t.Run(marker, func(t *testing.T) {
+			tmpdir := t.TempDir()
+			if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte("{}"), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.WriteFile(filepath.Join(tmpdir, marker), []byte(content), 0644); err != nil {
+				t.Fatal(err)
+			}
+			if got := DetectProjectType(tmpdir); got != ProjectTypeTypeScript {
+				t.Errorf("package.json + %s: expected ProjectTypeTypeScript, got %s", marker, got)
+			}
+		})
+	}
+}
+
 // TestDetectProjectTypeGo verifies Go project detection
 func TestDetectProjectTypeGo(t *testing.T) {
 	tmpdir := t.TempDir()

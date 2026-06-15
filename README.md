@@ -34,7 +34,7 @@ go install github.com/stevedores-org/local-ci@latest
 
 ## Quick Start
 
-Initialize local-ci in your project (auto-detects Rust or TypeScript/Bun):
+Initialize local-ci in your project (auto-detects Rust, TypeScript/Bun, or Swift):
 
 ```bash
 cd your-project
@@ -129,6 +129,17 @@ local-ci --version
 | **lint** | `bun run lint` | ✓ (`--fix`) | enabled |
 | **test** | `bun test` | ✗ | enabled |
 | **format** | `bun run format --check` | ✓ | disabled |
+
+### Swift (auto-detected via Package.swift or *.xcodeproj)
+
+| Stage | Command (SPM) | Auto-fix | Default |
+|-------|---------|----------|---------|
+| **fmt** | `swift-format lint --recursive .` | ✓ | enabled |
+| **lint** | `swiftlint --strict` | ✗ | disabled |
+| **build** | `swift build` | ✗ | enabled |
+| **test** | `swift test` | ✗ | enabled |
+
+Xcode projects use `xcodebuild` instead of `swift` commands.
 
 Lint and format stages delegate to your `package.json` scripts, so you can use eslint, biome, prettier, or any other tool.
 
@@ -503,6 +514,33 @@ Sample schema:
 - `passed`
 - `failed`
 - `results[]` with `name`, `command`, `status`, `duration_ms`, `cache_hit`, optional `output`, optional `error`
+
+## Remote execution
+
+Run expensive stages on remote nodes **in Tailscale** before pushing — keeps GitHub Actions minutes for PR gates only. **`downhome`** is this Mac (`aivcs`). Fleet map: [docs/SSH_IDENTITY.md](docs/SSH_IDENTITY.md) → **In Tailscale**.
+
+```bash
+tailscale status
+tailscale ping uranus
+ssh aivcs@uranus echo ok
+ssh aivcs2@spark-bde7 echo ok
+
+local-ci --remote-host uranus fmt clippy test
+local-ci --remote-host sparky test
+local-ci --list-remote-hosts
+```
+
+Flags: `--remote`, `--session`, `--remote-dir`, `--remote-timeout`, `--remote-host`, `--list-remote-hosts`.
+
+## MCP server
+
+Expose local-ci stages to IDE agents via stdio MCP:
+
+```bash
+local-ci serve
+```
+
+See [docs/MCP_SETUP.md](docs/MCP_SETUP.md) for Cursor, VS Code, and Windsurf wiring.
 
 ## License
 

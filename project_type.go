@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 // ProjectType represents the type of project being analyzed
@@ -15,6 +16,7 @@ const (
 	ProjectTypeTypeScript ProjectType = "typescript"
 	ProjectTypeGo         ProjectType = "go"
 	ProjectTypeJava       ProjectType = "java"
+	ProjectTypeSwift      ProjectType = "swift"
 	ProjectTypeGeneric    ProjectType = "generic"
 )
 
@@ -25,6 +27,31 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypeRust
 	}
 
+	// Check for Node.js/TypeScript project files. package.json is a definitive
+	// Node marker — check before Swift/Python so monorepos with requirements.txt
+	// or Package.swift still get npm/bun stages.
+	if fileExists(filepath.Join(root, "package.json")) {
+		return ProjectTypeTypeScript
+	}
+
+	// Check for Swift project files
+	if fileExists(filepath.Join(root, "Package.swift")) {
+		return ProjectTypeSwift
+	}
+
+	// Check for Xcode project/workspace directories
+	entries, err := os.ReadDir(root)
+	if err == nil {
+		for _, entry := range entries {
+			if entry.IsDir() {
+				name := entry.Name()
+				if strings.HasSuffix(name, ".xcodeproj") || strings.HasSuffix(name, ".xcworkspace") {
+					return ProjectTypeSwift
+				}
+			}
+		}
+	}
+
 	// Check for Python project files
 	if fileExists(filepath.Join(root, "pyproject.toml")) ||
 		fileExists(filepath.Join(root, "setup.py")) ||
@@ -32,10 +59,6 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypePython
 	}
 
-	// Check for TypeScript/Bun project files
-	if fileExists(filepath.Join(root, "package.json")) {
-		return ProjectTypeTypeScript
-	}
 
 	// Check for Go project files
 	if fileExists(filepath.Join(root, "go.mod")) {
@@ -53,6 +76,11 @@ func DetectProjectType(root string) ProjectType {
 
 // GetDefaultStagesForType returns language-specific default stages
 func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
+	// For Swift, we need the root to check for Package.swift vs Xcode
+	// Since GetDefaultStagesForType signature doesn't include root, we'll
+	// use the current directory or handle it in the caller.
+	// Actually, the stages can be generic enough or use detection logic inside.
+
 	switch projectType {
 	case ProjectTypeRust:
 		return getRustStages()
@@ -64,6 +92,9 @@ func GetDefaultStagesForType(projectType ProjectType) map[string]Stage {
 		return getGoStages()
 	case ProjectTypeJava:
 		return getJavaStages()
+	case ProjectTypeSwift:
+		cwd, _ := os.Getwd()
+		return defaultSwiftStages(cwd)
 	default:
 		return getGenericStages()
 	}
@@ -202,6 +233,8 @@ func getPythonStages() map[string]Stage {
 }
 
 
+
+
 // getGoStages returns Go specific stages
 func getGoStages() map[string]Stage {
 	return map[string]Stage{
@@ -293,6 +326,8 @@ func GetCachePatternForType(projectType ProjectType) []string {
 		return []string{"*.go", "go.mod", "go.sum"}
 	case ProjectTypeJava:
 		return []string{"*.java", "pom.xml", "build.gradle"}
+	case ProjectTypeSwift:
+		return []string{"*.swift", "Package.swift", "Package.resolved", "*.xcconfig", "project.pbxproj"}
 	default:
 		return []string{"*"}
 	}
@@ -313,6 +348,8 @@ func GetSkipDirsForType(projectType ProjectType) []string {
 		return append(baseSkip, "vendor")
 	case ProjectTypeJava:
 		return append(baseSkip, "target", "build")
+	case ProjectTypeSwift:
+		return append(baseSkip, ".build", ".swiftpm", "DerivedData", "Pods")
 	default:
 		return append(baseSkip, "node_modules", "target", "build", "dist")
 	}
@@ -337,9 +374,80 @@ func GetConfigTemplateForType(projectType ProjectType) string {
 		return getGoConfigTemplate()
 	case ProjectTypeJava:
 		return getJavaConfigTemplate()
+	case ProjectTypeSwift:
+		return getSwiftConfigTemplate()
 	default:
 		return getGenericConfigTemplate()
 	}
+}
+
+func getSwiftConfigTemplate() string {
+	cwd, _ := os.Getwd()
+	isSPM := fileExistsAt(filepath.Join(cwd, "Package.swift"))
+
+	if isSPM {
+		return `# local-ci configuration for Swift (SPM) project
+# See: https://github.com/stevedores-org/local-ci
+
+[cache]
+skip_dirs = [".git", ".github", "scripts", ".claude", ".build", ".swiftpm"]
+include_patterns = ["*.swift", "Package.swift", "Package.resolved"]
+
+[stages.fmt]
+command = ["swift-format", "lint", "--recursive", "."]
+fix_command = ["swift-format", "format", "--in-place", "--recursive", "."]
+timeout = 120
+enabled = true
+
+[stages.build]
+command = ["swift", "build"]
+timeout = 600
+enabled = true
+
+[stages.test]
+command = ["swift", "test"]
+timeout = 1200
+enabled = true
+
+[dependencies]
+required = ["swift-format"]
+optional = ["swiftlint"]
+
+[workspace]
+exclude = []
+`
+	}
+
+	return `# local-ci configuration for Swift (Xcode) project
+# See: https://github.com/stevedores-org/local-ci
+
+[cache]
+skip_dirs = [".git", ".github", "scripts", ".claude", "DerivedData", "Pods"]
+include_patterns = ["*.swift", "*.xcconfig", "project.pbxproj"]
+
+[stages.fmt]
+command = ["swift-format", "lint", "--recursive", "."]
+fix_command = ["swift-format", "format", "--in-place", "--recursive", "."]
+timeout = 120
+enabled = true
+
+[stages.build]
+command = ["xcodebuild", "-scheme", "Placeholder", "build"]
+timeout = 600
+enabled = true
+
+[stages.test]
+command = ["xcodebuild", "test", "-scheme", "Placeholder", "-destination", "platform=macOS"]
+timeout = 1200
+enabled = true
+
+[dependencies]
+required = ["swift-format"]
+optional = ["swiftlint"]
+
+[workspace]
+exclude = []
+`
 }
 
 func getRustConfigTemplate() string {
@@ -410,6 +518,7 @@ optional = []
 exclude = []
 `
 }
+
 
 
 func getGoConfigTemplate() string {

@@ -10,6 +10,65 @@ import (
 	"time"
 )
 
+// remoteSSH abstracts SSH execution so RemoteExecutor can be unit-tested
+// without a live host. When nil on RemoteExecutor, execSSH is used.
+type remoteSSH interface {
+	execWithOutput(ctx context.Context, cmd string) (string, error)
+}
+
+type execSSH struct {
+	host           string
+	connectTimeout time.Duration
+}
+
+func (e execSSH) execWithOutput(ctx context.Context, cmd string) (string, error) {
+	timeoutSec := int(e.connectTimeout.Seconds())
+	if timeoutSec < 1 {
+		timeoutSec = 10
+	}
+	sshCmd := exec.CommandContext(
+		ctx,
+		"ssh",
+		"-o",
+		fmt.Sprintf("ConnectTimeout=%d", timeoutSec),
+		e.host,
+		cmd,
+	)
+
+	var stdout, stderr bytes.Buffer
+	sshCmd.Stdout = &stdout
+	sshCmd.Stderr = &stderr
+
+	if err := sshCmd.Run(); err != nil {
+		if benignSSHFailure(cmd, stdout.String(), stderr.String()) {
+			return "", nil
+		}
+		return stdout.String(), fmt.Errorf("SSH command failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	return stdout.String(), nil
+}
+
+// benignSSHFailure reports whether a non-zero ssh exit should be treated as an
+// empty success rather than an error. The only benign case is polling the
+// exit-code sentinel before it exists: pollExitCode runs `cat <sentinel>
+// 2>/dev/null`, which exits non-zero with no output when the file is absent and
+// must be retried, not failed.
+//
+// This deliberately matches only a leading `cat ` command. The previous logic
+// swallowed ANY non-zero exit with empty stdout+stderr (masking real
+// send-keys/capture/connection failures behind a later, less informative
+// "timeout waiting for exit code"), and used strings.Contains(cmd, "cat"),
+// which also matched `capture-pane` ("cat" ⊂ "capture").
+func benignSSHFailure(cmd, stdout, stderr string) bool {
+	if !strings.HasPrefix(strings.TrimSpace(cmd), "cat ") {
+		return false
+	}
+	return strings.Contains(stderr, "No such file") ||
+		strings.Contains(stderr, "cannot open") ||
+		(stderr == "" && stdout == "")
+}
+
 // RemoteExecutor handles execution of stages on a remote machine via SSH+tmux
 type RemoteExecutor struct {
 	Host    string        // SSH host (e.g., "aivcs@100.90.209.9")
@@ -17,6 +76,7 @@ type RemoteExecutor struct {
 	WorkDir string        // Remote working directory
 	Timeout time.Duration // SSH operation timeout
 	Verbose bool          // Show detailed output
+	ssh     remoteSSH     // test hook; defaults to execSSH
 }
 
 // NewRemoteExecutor creates a new remote executor
@@ -36,6 +96,35 @@ func NewRemoteExecutor(host, session, workDir string, timeout time.Duration, ver
 	}
 }
 
+func (re *RemoteExecutor) sshClient() remoteSSH {
+	if re.ssh != nil {
+		return re.ssh
+	}
+	return execSSH{host: re.Host, connectTimeout: re.Timeout}
+}
+
+// joinShellCommand quotes argv for safe remote shell execution.
+func joinShellCommand(parts []string) string {
+	if len(parts) == 0 {
+		return ""
+	}
+	quoted := make([]string, len(parts))
+	for i, p := range parts {
+		quoted[i] = escapeShellArg(p)
+	}
+	return strings.Join(quoted, " ")
+}
+
+// buildRemoteStageCommand wraps a stage command with cd + exit-code sentinel capture.
+func buildRemoteStageCommand(workDir string, cmd []string, sentinelFile string) string {
+	return fmt.Sprintf(
+		"cd %s && %s; echo $? > %s",
+		escapeShellArg(workDir),
+		joinShellCommand(cmd),
+		sentinelFile,
+	)
+}
+
 // ExecuteStage runs a single stage on the remote machine
 func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 	start := time.Now()
@@ -45,27 +134,24 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 		Status:  "fail",
 	}
 
-	// Generate unique sentinel file for this stage
+	if len(stage.Cmd) == 0 {
+		result.Error = fmt.Errorf("no command defined")
+		result.Duration = time.Since(start)
+		return result
+	}
+
 	sentinelFile := fmt.Sprintf("/tmp/kc_exit_%s_%d", stage.Name, time.Now().UnixNano())
+	remoteCmd := buildRemoteStageCommand(re.WorkDir, stage.Cmd, sentinelFile)
 
-	// Build remote command with exit code capture
-	// Format: (cd /path && cmd); echo $? > /tmp/sentinel
-	remoteCmd := fmt.Sprintf(
-		"cd %s && %s; echo $? > %s",
-		escapeShellArg(re.WorkDir),
-		strings.Join(stage.Cmd, " "),
-		sentinelFile,
-	)
-
-	// Create context with timeout
-	ctx, cancel := context.WithTimeout(context.Background(), time.Duration(stage.Timeout)*time.Second)
+	stageTimeout := time.Duration(stage.Timeout) * time.Second
+	if stageTimeout <= 0 {
+		stageTimeout = 10 * time.Minute
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), stageTimeout)
 	defer cancel()
 
-	// Execute command in tmux session
-	output, err := re.runInSession(ctx, remoteCmd)
-	if err != nil {
+	if err := re.sendToSession(ctx, remoteCmd); err != nil {
 		result.Error = err
-		result.Output = output
 		result.Duration = time.Since(start)
 		if re.Verbose {
 			warnf("Remote execution failed: %v", err)
@@ -73,19 +159,22 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 		return result
 	}
 
-	// Poll for exit code from sentinel file
 	exitCode, err := re.pollExitCode(ctx, sentinelFile)
 	if err != nil {
 		result.Error = fmt.Errorf("failed to get exit code: %w", err)
-		result.Output = output
 		result.Duration = time.Since(start)
 		return result
 	}
 
-	// Cleanup sentinel file
+	output, err := re.captureSessionOutput(ctx)
+	if err != nil {
+		result.Error = fmt.Errorf("failed to capture output: %w", err)
+		result.Duration = time.Since(start)
+		return result
+	}
+
 	_ = re.cleanupSentinel(sentinelFile)
 
-	// Update result based on exit code
 	result.Output = output
 	result.Duration = time.Since(start)
 
@@ -99,12 +188,11 @@ func (re *RemoteExecutor) ExecuteStage(stage Stage) Result {
 	return result
 }
 
-// runInSession executes a command within a tmux session
-func (re *RemoteExecutor) runInSession(ctx context.Context, cmd string) (string, error) {
-	// First, ensure the session exists and we're in the right directory
+// sendToSession dispatches a command into a tmux session without waiting for completion.
+func (re *RemoteExecutor) sendToSession(ctx context.Context, cmd string) error {
 	initCmd := fmt.Sprintf(
 		"tmux new-session -d -s %s -c %s 'sleep 999999' 2>/dev/null; true",
-		re.Session,
+		escapeShellArg(re.Session),
 		escapeShellArg(re.WorkDir),
 	)
 
@@ -114,33 +202,32 @@ func (re *RemoteExecutor) runInSession(ctx context.Context, cmd string) (string,
 		}
 	}
 
-	// Send the actual command to the session
 	sendCmd := fmt.Sprintf(
 		"tmux send-keys -t %s '%s' Enter",
-		re.Session,
+		escapeShellArg(re.Session),
 		escapeForTmux(cmd),
 	)
 
 	if err := re.sshExec(ctx, sendCmd); err != nil {
-		return "", fmt.Errorf("failed to send command to tmux: %w", err)
+		return fmt.Errorf("failed to send command to tmux: %w", err)
 	}
 
-	// Give command time to execute, then capture output
-	time.Sleep(100 * time.Millisecond)
+	return nil
+}
 
-	// Capture pane output
-	captureCmd := fmt.Sprintf("tmux capture-pane -t %s -p", re.Session)
+// captureSessionOutput reads the current tmux pane after a stage completes.
+func (re *RemoteExecutor) captureSessionOutput(ctx context.Context) (string, error) {
+	captureCmd := fmt.Sprintf("tmux capture-pane -t %s -p", escapeShellArg(re.Session))
 	output, err := re.sshExecWithOutput(ctx, captureCmd)
 	if err != nil {
 		return "", fmt.Errorf("failed to capture output: %w", err)
 	}
-
 	return output, nil
 }
 
 // pollExitCode polls the remote sentinel file for the exit code
 func (re *RemoteExecutor) pollExitCode(ctx context.Context, sentinelFile string) (int, error) {
-	maxRetries := 300 // 30 seconds with 100ms poll
+	maxRetries := 300
 	retries := 0
 
 	for retries < maxRetries {
@@ -150,18 +237,15 @@ func (re *RemoteExecutor) pollExitCode(ctx context.Context, sentinelFile string)
 		default:
 		}
 
-		// Try to read exit code
 		catCmd := fmt.Sprintf("cat %s 2>/dev/null", sentinelFile)
 		output, err := re.sshExecWithOutput(ctx, catCmd)
 		if err == nil && output != "" {
-			// Successfully read exit code
 			code, err := strconv.Atoi(strings.TrimSpace(output))
 			if err == nil {
 				return code, nil
 			}
 		}
 
-		// File doesn't exist yet or couldn't read, retry
 		time.Sleep(100 * time.Millisecond)
 		retries++
 	}
@@ -171,41 +255,20 @@ func (re *RemoteExecutor) pollExitCode(ctx context.Context, sentinelFile string)
 
 // cleanupSentinel removes the sentinel file
 func (re *RemoteExecutor) cleanupSentinel(sentinelFile string) error {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), re.Timeout)
 	defer cancel()
 
 	cleanupCmd := fmt.Sprintf("rm -f %s", sentinelFile)
 	return re.sshExec(ctx, cleanupCmd)
 }
 
-// sshExec executes a command on the remote host
 func (re *RemoteExecutor) sshExec(ctx context.Context, cmd string) error {
 	_, err := re.sshExecWithOutput(ctx, cmd)
 	return err
 }
 
-// sshExecWithOutput executes a command on the remote host and returns output
 func (re *RemoteExecutor) sshExecWithOutput(ctx context.Context, cmd string) (string, error) {
-	sshCmd := exec.CommandContext(ctx, "ssh", "-o", "ConnectTimeout=10", re.Host, cmd)
-
-	var stdout, stderr bytes.Buffer
-	sshCmd.Stdout = &stdout
-	sshCmd.Stderr = &stderr
-
-	if err := sshCmd.Run(); err != nil {
-		// For certain commands like 'cat', failure to find file is OK
-		if strings.Contains(cmd, "cat") && strings.Contains(stderr.String(), "No such file") {
-			return "", nil
-		}
-		// If there's no stderr output and no stdout, the command likely succeeded
-		// but the exit code was non-zero for a benign reason (e.g., tmux session already exists)
-		if stderr.Len() == 0 && stdout.Len() == 0 {
-			return "", nil
-		}
-		return stdout.String(), fmt.Errorf("SSH command failed: %w (stderr: %s)", err, stderr.String())
-	}
-
-	return stdout.String(), nil
+	return re.sshClient().execWithOutput(ctx, cmd)
 }
 
 // escapeShellArg safely escapes a shell argument
@@ -218,7 +281,6 @@ func escapeShellArg(arg string) string {
 
 // escapeForTmux safely escapes a command for tmux send-keys
 func escapeForTmux(cmd string) string {
-	// For tmux send-keys, we need to escape single quotes
 	return strings.ReplaceAll(cmd, "'", "'\\''")
 }
 
@@ -226,7 +288,7 @@ func escapeForTmux(cmd string) string {
 func (re *RemoteExecutor) EnsureRemoteSession(ctx context.Context) error {
 	cmd := fmt.Sprintf(
 		"tmux new-session -d -s %s -c %s 'sleep 999999' 2>/dev/null || true",
-		re.Session,
+		escapeShellArg(re.Session),
 		escapeShellArg(re.WorkDir),
 	)
 	return re.sshExec(ctx, cmd)
@@ -234,11 +296,48 @@ func (re *RemoteExecutor) EnsureRemoteSession(ctx context.Context) error {
 
 // KillRemoteSession kills the remote tmux session
 func (re *RemoteExecutor) KillRemoteSession(ctx context.Context) error {
-	cmd := fmt.Sprintf("tmux kill-session -t %s 2>/dev/null || true", re.Session)
+	cmd := fmt.Sprintf("tmux kill-session -t %s 2>/dev/null || true", escapeShellArg(re.Session))
 	return re.sshExec(ctx, cmd)
 }
 
 // TestSSHConnection tests if SSH connection works
 func (re *RemoteExecutor) TestSSHConnection(ctx context.Context) error {
 	return re.sshExec(ctx, "echo 'SSH connection OK'")
+}
+
+// SyncWorkspace uses rsync to synchronize local directory to remote WorkDir
+func (re *RemoteExecutor) SyncWorkspace(ctx context.Context, localDir string, skipDirs []string) error {
+	mkdirCmd := fmt.Sprintf("mkdir -p %s", escapeShellArg(re.WorkDir))
+	if err := re.sshExec(ctx, mkdirCmd); err != nil {
+		return fmt.Errorf("failed to create remote work directory: %w", err)
+	}
+
+	rsyncArgs := []string{"-az", "--delete"}
+	rsyncArgs = append(rsyncArgs, "--exclude", ".git", "--exclude", ".local-ci-cache")
+
+	for _, dir := range skipDirs {
+		if dir != "" && dir != ".git" {
+			rsyncArgs = append(rsyncArgs, "--exclude", dir)
+		}
+	}
+
+	src := localDir
+	if !strings.HasSuffix(src, "/") {
+		src += "/"
+	}
+	dest := fmt.Sprintf("%s:%s", re.Host, re.WorkDir)
+	rsyncArgs = append(rsyncArgs, src, dest)
+
+	if re.Verbose {
+		printf("Syncing workspace to remote: rsync %s\n", strings.Join(rsyncArgs, " "))
+	}
+
+	cmd := exec.CommandContext(ctx, "rsync", rsyncArgs...)
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("rsync failed: %w (stderr: %s)", err, stderr.String())
+	}
+
+	return nil
 }

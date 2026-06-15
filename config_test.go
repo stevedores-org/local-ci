@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -48,6 +49,31 @@ func TestGetEnabledStagesUnknownStagesSortAlphabetically(t *testing.T) {
 	for i, name := range expected {
 		if enabled[i] != name {
 			t.Errorf("position %d: expected %q, got %q (full order: %v)", i, name, enabled[i], enabled)
+		}
+	}
+}
+
+func TestGetAllStagesIncludesDisabled(t *testing.T) {
+	config := &Config{
+		Stages: map[string]Stage{
+			"fmt":    {Name: "fmt", Enabled: true},
+			"clippy": {Name: "clippy", Enabled: true},
+			"test":   {Name: "test", Enabled: true},
+			"check":  {Name: "check", Enabled: false},
+			"deny":   {Name: "deny", Enabled: false},
+		},
+	}
+
+	all := config.GetAllStages()
+	if len(all) != 5 {
+		t.Fatalf("expected all 5 stages (incl. disabled), got %d: %v", len(all), all)
+	}
+
+	// Deterministic priority order, regardless of enabled state.
+	expected := []string{"fmt", "check", "clippy", "test", "deny"}
+	for i, name := range expected {
+		if all[i] != name {
+			t.Errorf("position %d: expected %q, got %q (full order: %v)", i, name, all[i], all)
 		}
 	}
 }
@@ -329,5 +355,237 @@ func TestDefaultStagesHaveCorrectProperties(t *testing.T) {
 		if stages[name].Enabled {
 			t.Errorf("%s should be disabled by default", name)
 		}
+	}
+}
+
+// ---------------------------------------------------------------------------
+// Named remote-host presets
+// ---------------------------------------------------------------------------
+
+const sampleRemoteTomlWithHosts = `
+[ssh_defaults]
+macos_user = "aivcs"
+linux_spark_user = "aivcs2"
+
+[hosts.sparky]
+host = "spark-bde7"
+platform = "linux_spark"
+session = "sparky-onion"
+remote_dir = "/data/builds/local-ci"
+description = "DGX Spark — ARM64 + Blackwell"
+
+[hosts.studio]
+host = "downhome"
+platform = "macos"
+`
+
+func writeRemoteTomlWithHosts(t *testing.T, body string) string {
+	t.Helper()
+	dir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(dir, ".local-ci-remote.toml"), []byte(body), 0644); err != nil {
+		t.Fatal(err)
+	}
+	// LoadConfig also reads .local-ci.toml if present; make sure it isn't, so
+	// we exercise the "no local config, only remote presets" path.
+	return dir
+}
+
+func TestRemoteHostsParseFromTOML(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+
+	if len(cfg.Hosts) != 2 {
+		t.Fatalf("expected 2 hosts, got %d: %#v", len(cfg.Hosts), cfg.Hosts)
+	}
+	h, ok := cfg.Hosts["sparky"]
+	if !ok {
+		t.Fatal("expected hosts.sparky to be parsed")
+	}
+	if h.Host != "spark-bde7" {
+		t.Errorf("Host: got %q, want spark-bde7 (bare tailnet name in config)", h.Host)
+	}
+	if h.Platform != remotePlatformLinuxSpark {
+		t.Errorf("Platform: got %q, want linux_spark", h.Platform)
+	}
+	if h.Session != "sparky-onion" {
+		t.Errorf("Session: got %q, want sparky-onion", h.Session)
+	}
+	if h.RemoteDir != "/data/builds/local-ci" {
+		t.Errorf("RemoteDir: got %q, want /data/builds/local-ci", h.RemoteDir)
+	}
+}
+
+func TestRemoteHostsLookup_Found(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	h, err := cfg.GetRemoteHost("sparky")
+	if err != nil {
+		t.Fatalf("GetRemoteHost: %v", err)
+	}
+	if h.Host != "aivcs2@spark-bde7" {
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7 (normalized from bare spark-bde7)", h.Host)
+	}
+}
+
+func TestRemoteHostsLookup_NotFound(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	_, err = cfg.GetRemoteHost("unknown")
+	if err == nil {
+		t.Fatal("expected error for unknown host, got nil")
+	}
+	// Error should mention the available host names so users know what's defined.
+	msg := err.Error()
+	for _, name := range []string{"sparky", "studio"} {
+		if !strings.Contains(msg, name) {
+			t.Errorf("error message should list available host %q; got: %s", name, msg)
+		}
+	}
+}
+
+func TestRemoteHostsLookup_EmptyHostField(t *testing.T) {
+	// A preset with no `host =` entry is malformed — surface this rather than
+	// silently SSHing to "".
+	dir := writeRemoteTomlWithHosts(t, `
+[hosts.broken]
+session = "x"
+`)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	_, err = cfg.GetRemoteHost("broken")
+	if err == nil {
+		t.Fatal("expected error for preset with empty host field, got nil")
+	}
+}
+
+func TestResolveRemoteHost_FlagBeatsPreset(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	// User explicitly passed --session experiment + --remote-dir /alt.
+	got, err := cfg.ResolveRemoteHost("sparky",
+		"",           // no --remote → preset host wins
+		"experiment", // explicit --session → wins over preset
+		"/alt",       // explicit --remote-dir → wins over preset
+		true /* userSetSession */, true /* userSetRemoteDir */)
+	if err != nil {
+		t.Fatalf("ResolveRemoteHost: %v", err)
+	}
+	if got.Host != "aivcs2@spark-bde7" {
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7", got.Host)
+	}
+	if got.Session != "experiment" {
+		t.Errorf("Session: got %q, want experiment (CLI override)", got.Session)
+	}
+	if got.RemoteDir != "/alt" {
+		t.Errorf("RemoteDir: got %q, want /alt (CLI override)", got.RemoteDir)
+	}
+}
+
+func TestResolveRemoteHost_PresetFillsUnsetFlags(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	// User passed no overrides; --session was left at its default "onion".
+	got, err := cfg.ResolveRemoteHost("sparky",
+		"",      // no --remote
+		"onion", // default --session value
+		"",      // no --remote-dir
+		false /* userSetSession */, false /* userSetRemoteDir */)
+	if err != nil {
+		t.Fatalf("ResolveRemoteHost: %v", err)
+	}
+	if got.Host != "aivcs2@spark-bde7" {
+		t.Errorf("Host: got %q, want aivcs2@spark-bde7", got.Host)
+	}
+	if got.Session != "sparky-onion" {
+		t.Errorf("Session: got %q, want sparky-onion (preset)", got.Session)
+	}
+	if got.RemoteDir != "/data/builds/local-ci" {
+		t.Errorf("RemoteDir: got %q, want /data/builds/local-ci (preset)", got.RemoteDir)
+	}
+}
+
+func TestResolveRemoteHost_ExplicitDefaultStillWins(t *testing.T) {
+	// Edge case: user passed --session onion (the literal default). We track
+	// that with userSetSession=true, so it must beat the preset's session.
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	got, err := cfg.ResolveRemoteHost("sparky", "", "onion", "",
+		true /* userSetSession */, false)
+	if err != nil {
+		t.Fatalf("ResolveRemoteHost: %v", err)
+	}
+	if got.Session != "onion" {
+		t.Errorf("Session: got %q, want onion (explicit user flag)", got.Session)
+	}
+}
+
+func TestResolveRemoteHost_RemoteFlagBeatsPresetHost(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	got, err := cfg.ResolveRemoteHost("sparky",
+		"other@elsewhere", "", "", false, false)
+	if err != nil {
+		t.Fatalf("ResolveRemoteHost: %v", err)
+	}
+	if got.Host != "other@elsewhere" {
+		t.Errorf("Host: got %q, want other@elsewhere (--remote overrides preset)", got.Host)
+	}
+}
+
+func TestListRemoteHosts_Sorted(t *testing.T) {
+	dir := writeRemoteTomlWithHosts(t, sampleRemoteTomlWithHosts)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	got := cfg.ListRemoteHosts()
+	if len(got) != 2 {
+		t.Fatalf("expected 2 hosts, got %d", len(got))
+	}
+	if got[0].Name != "sparky" || got[1].Name != "studio" {
+		t.Fatalf("expected sorted sparky, studio; got %#v", got)
+	}
+}
+
+func TestRemoteHostsLookup_NoPresetsDefined(t *testing.T) {
+	// LoadConfig with remote=true but no [hosts.*] sections at all → lookup
+	// must surface a clear "no presets defined" error, not just "not found".
+	dir := writeRemoteTomlWithHosts(t, `# no hosts here
+[stages.fmt]
+enabled = true
+`)
+	cfg, err := LoadConfig(dir, true)
+	if err != nil {
+		t.Fatalf("LoadConfig: %v", err)
+	}
+	_, err = cfg.GetRemoteHost("sparky")
+	if err == nil {
+		t.Fatal("expected error when no presets exist, got nil")
+	}
+	if !strings.Contains(err.Error(), "no remote host presets") {
+		t.Errorf("error message should mention 'no remote host presets'; got: %s", err.Error())
 	}
 }
