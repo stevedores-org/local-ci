@@ -35,8 +35,8 @@ func TestDetectProjectTypePython(t *testing.T) {
 	}
 }
 
-// TestDetectProjectTypeNode verifies Node.js project detection
-func TestDetectProjectTypeNode(t *testing.T) {
+// TestDetectProjectTypeTypeScript verifies TypeScript project detection
+func TestDetectProjectTypeTypeScript(t *testing.T) {
 	tmpdir := t.TempDir()
 	// Create package.json
 	if err := os.WriteFile(filepath.Join(tmpdir, "package.json"), []byte("{}"), 0644); err != nil {
@@ -44,15 +44,15 @@ func TestDetectProjectTypeNode(t *testing.T) {
 	}
 
 	projectType := DetectProjectType(tmpdir)
-	if projectType != ProjectTypeNode {
-		t.Errorf("Expected ProjectTypeNode, got %s", projectType)
+	if projectType != ProjectTypeTypeScript {
+		t.Errorf("Expected ProjectTypeTypeScript, got %s", projectType)
 	}
 }
 
-// TestDetectProjectTypeNodeWinsOverPythonAndSwift verifies that an explicit
-// package.json takes precedence over Python/Swift markers a Node repo may also
+// TestDetectProjectTypeTypeScriptWinsOverPythonAndSwift verifies that an explicit
+// package.json takes precedence over Python/Swift markers a TypeScript repo may also
 // carry (regression for the precedence bug).
-func TestDetectProjectTypeNodeWinsOverPythonAndSwift(t *testing.T) {
+func TestDetectProjectTypeTypeScriptWinsOverPythonAndSwift(t *testing.T) {
 	cases := map[string]string{
 		"requirements.txt": "requests==2.0",
 		"setup.py":         "from setuptools import setup",
@@ -68,8 +68,8 @@ func TestDetectProjectTypeNodeWinsOverPythonAndSwift(t *testing.T) {
 			if err := os.WriteFile(filepath.Join(tmpdir, marker), []byte(content), 0644); err != nil {
 				t.Fatal(err)
 			}
-			if got := DetectProjectType(tmpdir); got != ProjectTypeNode {
-				t.Errorf("package.json + %s: expected ProjectTypeNode, got %s", marker, got)
+			if got := DetectProjectType(tmpdir); got != ProjectTypeTypeScript {
+				t.Errorf("package.json + %s: expected ProjectTypeTypeScript, got %s", marker, got)
 			}
 		})
 	}
@@ -143,14 +143,14 @@ func TestGetDefaultStagesForPython(t *testing.T) {
 	}
 }
 
-// TestGetDefaultStagesForNode verifies Node.js-specific stages
-func TestGetDefaultStagesForNode(t *testing.T) {
-	stages := GetDefaultStagesForType(ProjectTypeNode)
+// TestGetDefaultStagesForTypeScript verifies TypeScript-specific stages
+func TestGetDefaultStagesForTypeScript(t *testing.T) {
+	stages := GetDefaultStagesForType(ProjectTypeTypeScript)
 
-	expectedStages := []string{"lint", "test", "build"}
+	expectedStages := []string{"install", "typecheck", "lint", "test"}
 	for _, stageName := range expectedStages {
 		if _, exists := stages[stageName]; !exists {
-			t.Errorf("Expected stage %s not found for Node", stageName)
+			t.Errorf("Expected stage %s not found for TypeScript", stageName)
 		}
 	}
 }
@@ -163,7 +163,7 @@ func TestGetCachePatternForType(t *testing.T) {
 	}{
 		{ProjectTypeRust, "*.rs"},
 		{ProjectTypePython, "*.py"},
-		{ProjectTypeNode, "*.js"},
+		{ProjectTypeTypeScript, "*.js"},
 		{ProjectTypeGo, "*.go"},
 		{ProjectTypeJava, "*.java"},
 	}
@@ -191,7 +191,7 @@ func TestGetSkipDirsForType(t *testing.T) {
 	}{
 		{ProjectTypeRust, "target"},
 		{ProjectTypePython, "__pycache__"},
-		{ProjectTypeNode, "node_modules"},
+		{ProjectTypeTypeScript, "node_modules"},
 		{ProjectTypeGo, "vendor"},
 		{ProjectTypeJava, "target"},
 	}
@@ -216,7 +216,7 @@ func TestGetConfigTemplateForType(t *testing.T) {
 	projectTypes := []ProjectType{
 		ProjectTypeRust,
 		ProjectTypePython,
-		ProjectTypeNode,
+		ProjectTypeTypeScript,
 		ProjectTypeGo,
 		ProjectTypeJava,
 		ProjectTypeGeneric,
@@ -290,7 +290,7 @@ func TestRustStagesTestCommandIsDefault(t *testing.T) {
 	}
 }
 
-// TestPriorityDetection verifies detection priority (Rust > Python > Node > Go > Java > Generic)
+// TestPriorityDetection verifies detection priority (Rust > Python > TypeScript > Go > Java > Generic)
 func TestPriorityDetection(t *testing.T) {
 	tmpdir := t.TempDir()
 
