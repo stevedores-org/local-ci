@@ -9,14 +9,17 @@ kind = "go"
 [stages.fmt]
 cmd = ["gofmt", "-l", "."]
 fix_cmd = ["gofmt", "-w", "."]
+timeout = 120
 enabled = true
 
 [stages.vet]
 cmd = ["go", "vet", "./..."]
+timeout = 300
 enabled = true
 
 [stages.test]
 cmd = ["go", "test", "./..."]
+timeout = 600
 enabled = true
 
 [stage_order]
