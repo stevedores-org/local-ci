@@ -1,7 +1,7 @@
 // local-ci — Universal local CI runner for any project type.
 //
 // Provides a fast, cacheable local CI pipeline that mirrors GitHub Actions
-// for Rust, Python, Node.js, Go, Java, and other projects.
+// for Rust, Python, TypeScript/Bun, Go, Java, and other projects.
 // Auto-detects project type and applies language-specific defaults.
 //
 // Supports file-hash caching, configuration files, and colored output.
@@ -20,7 +20,7 @@
 // Supported project types:
 //   - Rust (Cargo.toml)
 //   - Python (pyproject.toml, setup.py, requirements.txt)
-//   - Node.js (package.json)
+//   - TypeScript/Bun (package.json)
 //   - Go (go.mod)
 //   - Java (pom.xml, build.gradle)
 //   - Generic (custom commands via .local-ci.toml)
@@ -30,6 +30,7 @@ import (
 	"bytes"
 	"context"
 	"crypto/md5"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"io/fs"
@@ -41,7 +42,10 @@ import (
 	"time"
 )
 
-var version = "0.3.0" // Universal project support (Rust, Python, Node, Go, Java, etc.)
+var (
+	version  = "0.3.0" // Universal project support (Rust, Python, TypeScript, Go, Java, etc.)
+	flagJSON *bool
+)
 
 type Stage struct {
 	Name      string
@@ -157,6 +161,14 @@ type ResultJSON struct {
 	Error      string `json:"error,omitempty"`
 }
 
+// PipelineReportJSON is the JSON-serializable execution report of the pipeline.
+type PipelineReportJSON struct {
+	Results    []ResultJSON `json:"results"`
+	Passed     int          `json:"passed"`
+	Failed     int          `json:"failed"`
+	DurationMS int64        `json:"duration_ms"`
+}
+
 // toJSONResults converts a slice of Result to a slice of ResultJSON.
 func toJSONResults(results []Result) []ResultJSON {
 	out := make([]ResultJSON, 0, len(results))
@@ -194,13 +206,13 @@ func main() {
 		flagProfile         = flag.String("profile", "", "Use a named profile from config")
 		flagDryRun          = flag.Bool("dry-run", false, "Show what would run without executing")
 		flagParallel        = flag.Int("parallel", 0, "Number of parallel jobs (0 = auto)")
-		flagJSON            = flag.Bool("json", false, "Output in JSON format")
 		flagFailFast        = flag.Bool("fail-fast", false, "Stop on first failure")
 	)
+	flagJSON = flag.Bool("json", false, "Output in JSON format")
 
 	flag.Usage = func() {
 		fmt.Fprintf(os.Stderr, "local-ci v%s — Universal local CI for any project\n\n", version)
-		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, Node.js, Go, Java, and custom projects\n\n")
+		fmt.Fprintf(os.Stderr, "Supports: Rust, Python, TypeScript/Bun, Go, Java, and custom projects\n\n")
 		fmt.Fprintf(os.Stderr, "Usage: local-ci [flags] [stages...]\n\n")
 		fmt.Fprintf(os.Stderr, "Commands:\n")
 		fmt.Fprintf(os.Stderr, "  init      Initialize .local-ci.toml for detected project type\n\n")
@@ -747,6 +759,19 @@ func main() {
 		printf("%s", FormatMissingToolsMessage(missingTools))
 	}
 
+	if *flagJSON {
+		report := PipelineReportJSON{
+			Results:    toJSONResults(results),
+			Passed:     passCount,
+			Failed:     failCount,
+			DurationMS: totalDuration.Milliseconds(),
+		}
+		data, err := json.MarshalIndent(report, "", "  ")
+		if err == nil {
+			fmt.Fprintln(os.Stdout, string(data))
+		}
+	}
+
 	// Exit with error if any stage failed
 	if failCount > 0 {
 		os.Exit(1)
@@ -1017,11 +1042,19 @@ func updateGitignore(path string, entry string) error {
 
 // Printing helpers
 func printf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stdout, format, args...)
+	if flagJSON != nil && *flagJSON {
+		fmt.Fprintf(os.Stderr, format, args...)
+	} else {
+		fmt.Fprintf(os.Stdout, format, args...)
+	}
 }
 
 func successf(format string, args ...interface{}) {
-	fmt.Fprintf(os.Stdout, "\033[32m"+format+"\033[0m", args...)
+	if flagJSON != nil && *flagJSON {
+		fmt.Fprintf(os.Stderr, "\033[32m"+format+"\033[0m", args...)
+	} else {
+		fmt.Fprintf(os.Stdout, "\033[32m"+format+"\033[0m", args...)
+	}
 }
 
 func errorf(format string, args ...interface{}) {
