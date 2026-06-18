@@ -25,7 +25,7 @@ concurrency:
 
 env:
   # Pin to lornu-ai/local-ci main HEAD SHA (no semver tags yet).
-  LOCAL_CI_VERSION: REPLACE_WITH_LORNU_AI_LOCAL_CI_SHA
+  LOCAL_CI_VERSION: 852f97b4cb94738dd77ccdc896883a62b28891ba
   GO_VERSION: "1.23"
   RUST_TOOLCHAIN: "stable"
   CARGO_NET_GIT_FETCH_WITH_CLI: "true"
