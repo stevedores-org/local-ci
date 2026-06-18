@@ -10,6 +10,8 @@ jobs:
   test:
     name: Build & Test
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -34,12 +36,17 @@ jobs:
       - name: Verify dependencies
         run: go mod verify
 
-      - name: Check Formatting
+      - name: Format Go files
+        run: gofmt -w .
+
+      - name: Push auto-fixed formatting changes
+        if: github.event_name == 'push' && always()
         run: |
-          if [ -n "$(gofmt -l .)" ]; then
-            echo "The following files are not formatted:"
-            gofmt -l .
-            exit 1
+          if [ -n "$(git status --porcelain)" ]; then
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+            git commit -am "chore: auto-format Go code"
+            git push
           fi
 
       - name: Go Vet
