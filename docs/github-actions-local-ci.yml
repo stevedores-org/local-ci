@@ -1,0 +1,85 @@
+# Canonical GitHub Actions workflow for lornu-ai org consumer repos.
+#
+# Copy to: .github/workflows/local-ci.yml
+# Configure: .local-ci.toml (see repo root example)
+#
+# Install source of truth:
+#   lornu-ai repos  → github.com/lornu-ai/local-ci
+#   stevedores-org  → github.com/stevedores-org/local-ci (OSS)
+
+name: local-ci
+
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  # Pin to lornu-ai/local-ci main HEAD SHA (no semver tags yet).
+  LOCAL_CI_VERSION: REPLACE_WITH_LORNU_AI_LOCAL_CI_SHA
+  GO_VERSION: "1.23"
+  RUST_TOOLCHAIN: "stable"
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  local-ci:
+    name: local-ci (all enabled stages)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go (for local-ci binary)
+        uses: actions/setup-go@v5
+        with:
+          go-version: ${{ env.GO_VERSION }}
+          cache: false
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_TOOLCHAIN }}
+          components: clippy, rustfmt
+
+      - name: Cache cargo registry + target/
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "."
+
+      - name: Cache local-ci state
+        uses: actions/cache@v4
+        with:
+          path: .local-ci-cache
+          key: ${{ runner.os }}-localci-${{ github.ref }}-${{ hashFiles('.local-ci.toml') }}
+          restore-keys: |
+            ${{ runner.os }}-localci-${{ github.ref }}-
+
+      - name: Install local-ci (lornu-ai SoT)
+        run: |
+          set -euo pipefail
+          GOPROXY=direct go install "github.com/lornu-ai/local-ci@${LOCAL_CI_VERSION}"
+          command -v local-ci >/dev/null
+
+      - name: Run local-ci
+        id: lci
+        run: |
+          set -euo pipefail
+          local-ci 2>&1 | tee /tmp/local-ci.log
+
+      - name: Upload local-ci log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: local-ci-log
+          path: /tmp/local-ci.log
+          retention-days: 14
+          if-no-files-found: ignore
