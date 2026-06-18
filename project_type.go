@@ -59,7 +59,6 @@ func DetectProjectType(root string) ProjectType {
 		return ProjectTypePython
 	}
 
-
 	// Check for Go project files
 	if fileExists(filepath.Join(root, "go.mod")) {
 		return ProjectTypeGo
@@ -231,9 +230,6 @@ func getPythonStages() map[string]Stage {
 		},
 	}
 }
-
-
-
 
 // getGoStages returns Go specific stages
 func getGoStages() map[string]Stage {
@@ -518,8 +514,6 @@ optional = []
 exclude = []
 `
 }
-
-
 
 func getGoConfigTemplate() string {
 	return `# local-ci configuration for Go project
