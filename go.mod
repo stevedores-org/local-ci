@@ -1,4 +1,4 @@
-module github.com/stevedores-org/local-ci
+module github.com/lornu-ai/local-ci
 
 go 1.23.0
 
