@@ -11,7 +11,7 @@ import (
 // NixCache represents a Nix binary cache configuration
 type NixCache struct {
 	Name      string // Display name
-	URL       string // Cache URL (e.g., https://nix-cache.stevedores.org)
+	URL       string // Cache URL (e.g., https://nix-cache.lornu.ai)
 	PublicKey string // Trusted public key (base64-encoded ed25519). Empty means unknown.
 	Public    bool   // Whether to add to public binary caches
 	Trusted   bool   // Whether to trust the cache
@@ -21,7 +21,7 @@ type NixCache struct {
 var DefaultNixCaches = []NixCache{
 	{
 		Name:      "stevedores-attic",
-		URL:       "https://nix-cache.stevedores.org",
+		URL:       "https://nix-cache.lornu.ai",
 		PublicKey: "oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI=",
 		Public:    true,
 		Trusted:   true,

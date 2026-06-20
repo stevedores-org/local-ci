@@ -148,7 +148,7 @@ ssh aivcs@aivcs.local
 
 # For lornu-ai Nix cache
 cat >> ~/.config/nix/nix.conf <<EOF
-extra-substituters = https://nix-cache.stevedores.org https://cache.nixos.org
+extra-substituters = https://nix-cache.lornu.ai https://cache.nixos.org
 trusted-public-keys = oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI= cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
 EOF
 

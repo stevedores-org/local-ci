@@ -12,7 +12,7 @@ A lightweight, cacheable local CI runner for Rust and TypeScript/Bun workspaces.
 - 📂 **Workspace Aware**: Auto-detects Rust workspace structure and Bun/TypeScript projects
 - ⚡ **Config-Driven**: `.local-ci.toml` for per-project customization
 - 🪝 **Git Hooks**: Optional pre-commit hook generation
-- 🔗 **Nix Cache Integration**: Optional attic cache support for faster builds (nix-cache.stevedores.org)
+- 🔗 **Nix Cache Integration**: Optional attic cache support for faster builds (nix-cache.lornu.ai)
 
 ## Installation
 
@@ -67,7 +67,7 @@ local-ci
 ## Nix / Attic Cache
 
 This repo includes a `flake.nix` configured with:
-- `nixConfig.extra-substituters = [ "https://nix-cache.stevedores.org" ]`
+- `nixConfig.extra-substituters = [ "https://nix-cache.lornu.ai" ]`
 
 Use:
 
@@ -350,17 +350,17 @@ local-ci supports attic binary cache integration for faster Nix builds:
 local-ci configure-nix-cache
 ```
 
-This adds `https://nix-cache.stevedores.org` to your Nix configuration for faster builds across all lornu-ai projects.
+This adds `https://nix-cache.lornu.ai` to your Nix configuration for faster builds across all lornu-ai projects.
 
 **Supported Caches:**
-- `stevedores-attic` (https://nix-cache.stevedores.org) - Trusted cache for lornu-ai ecosystem
+- `stevedores-attic` (https://nix-cache.lornu.ai) - Trusted cache for lornu-ai ecosystem
 - `cache.nixos.org` - Official NixOS binary cache
 
 **Manual Configuration:**
 
 Add to `~/.config/nix/nix.conf`:
 ```ini
-extra-substituters = https://nix-cache.stevedores.org https://cache.nixos.org
+extra-substituters = https://nix-cache.lornu.ai https://cache.nixos.org
 trusted-public-keys = oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI= cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
 ```
 
