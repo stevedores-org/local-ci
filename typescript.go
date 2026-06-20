@@ -146,7 +146,7 @@ func defaultTypeScriptConfig() *Config {
 // getTypeScriptConfigTemplate returns the TOML configuration template for TypeScript/Bun projects.
 func getTypeScriptConfigTemplate() string {
 	return `# local-ci configuration for TypeScript/Bun projects
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 # Runtime: bun
 #
 # Stages delegate to package.json scripts where possible.

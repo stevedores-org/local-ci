@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/stevedores-org/local-ci
+git clone https://github.com/lornu-ai/local-ci
 cd local-ci
 go test -v ./...    # verify tests pass
 go build -o local-ci .
@@ -78,11 +78,11 @@ local-ci            # run default stages (fmt, clippy, test)
 
 ## Supported Repos
 
-local-ci is designed for all stevedores-org Rust workspaces:
+local-ci is designed for all lornu-ai Rust workspaces:
 
-- [llama.rs](https://github.com/stevedores-org/llama.rs) — inference runtime
-- [oxidizedRAG](https://github.com/stevedores-org/oxidizedRAG) — GraphRAG
-- [oxidizedMLX](https://github.com/stevedores-org/oxidizedMLX) — MLX bindings
-- [oxidizedgraph](https://github.com/stevedores-org/oxidizedgraph) — LangGraph
-- [aivcs](https://github.com/stevedores-org/aivcs) — AI version control
-- [DevProd-AI](https://github.com/stevedores-org/DevProd-AI) — DevProd tooling
+- [llama.rs](https://github.com/lornu-ai/llama.rs) — inference runtime
+- [oxidizedRAG](https://github.com/lornu-ai/oxidizedRAG) — GraphRAG
+- [oxidizedMLX](https://github.com/lornu-ai/oxidizedMLX) — MLX bindings
+- [oxidizedgraph](https://github.com/lornu-ai/oxidizedgraph) — LangGraph
+- [aivcs](https://github.com/lornu-ai/aivcs) — AI version control
+- [DevProd-AI](https://github.com/lornu-ai/DevProd-AI) — DevProd tooling

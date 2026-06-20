@@ -56,7 +56,7 @@ ssh aivcs@aivcs.local
 # Clone repo
 cd /tmp
 rm -rf local-ci  # Clean up if exists
-git clone https://github.com/stevedores-org/local-ci
+git clone https://github.com/lornu-ai/local-ci
 cd local-ci
 
 # Build
@@ -171,7 +171,7 @@ ssh aivcs@aivcs.local tmux list-sessions
 ```bash
 # In the tmux session (terminal from Step 2A)
 cd /tmp
-git clone https://github.com/stevedores-org/knittingCrab
+git clone https://github.com/lornu-ai/knittingCrab
 cd knittingCrab
 ```
 

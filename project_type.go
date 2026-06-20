@@ -383,7 +383,7 @@ func getSwiftConfigTemplate() string {
 
 	if isSPM {
 		return `# local-ci configuration for Swift (SPM) project
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", ".build", ".swiftpm"]
@@ -415,7 +415,7 @@ exclude = []
 	}
 
 	return `# local-ci configuration for Swift (Xcode) project
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", "DerivedData", "Pods"]
@@ -448,7 +448,7 @@ exclude = []
 
 func getRustConfigTemplate() string {
 	return `# local-ci configuration for Rust project
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 
 [cache]
 skip_dirs = [".git", "target", ".github", "scripts", ".claude", "node_modules"]
@@ -485,7 +485,7 @@ exclude = []
 
 func getPythonConfigTemplate() string {
 	return `# local-ci configuration for Python project
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", ".pytest_cache", "__pycache__", ".mypy_cache", ".venv", "venv"]
@@ -517,7 +517,7 @@ exclude = []
 
 func getGoConfigTemplate() string {
 	return `# local-ci configuration for Go project
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", "vendor"]
@@ -549,7 +549,7 @@ exclude = []
 
 func getJavaConfigTemplate() string {
 	return `# local-ci configuration for Java project
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 
 [cache]
 skip_dirs = [".git", ".github", "scripts", ".claude", "target", "build"]
@@ -575,7 +575,7 @@ exclude = []
 
 func getGenericConfigTemplate() string {
 	return `# local-ci configuration (Generic)
-# See: https://github.com/stevedores-org/local-ci
+# See: https://github.com/lornu-ai/local-ci
 #
 # Define your custom stages below. Example:
 #

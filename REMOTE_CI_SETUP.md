@@ -33,7 +33,7 @@ Developer Machine                      aivcs@aivcs.local (Mac Studio)
 # On aivcs.local
 ssh aivcs@aivcs.local
 cd /tmp
-git clone https://github.com/stevedores-org/local-ci
+git clone https://github.com/lornu-ai/local-ci
 cd local-ci
 go build -o /usr/local/bin/local-ci
 ```

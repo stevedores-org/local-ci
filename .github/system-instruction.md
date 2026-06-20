@@ -386,7 +386,7 @@ Refer to `OIDC_GCLOUD_SETUP.md` and `OIDC_MIGRATION_RUNBOOK.md` for migration st
 ## Sovereign Image Signing (Dockworker Standard)
 All container images must be built and signed by Dockworker.ai, ensuring cryptographic integrity and traceability across all clouds. This is now the required standard for Grow Without Limits.
 
-**NEVER Dockerfile (lornu-ai & stevedores-org):** These orgs use **Nix OCI + dockworker.ai** for container images almost since the beginning. Do not add, restore, or recommend `Dockerfile`, `Dockerfile.*`, `docker build`, or `docker buildx`. Build via `flake.nix` OCI outputs and `dockworker.toml` (`engine = "nix"`); publish with `nix build` + `skopeo` or `dockworker push`. When migrating legacy Dockerfiles: Nix equivalent first → publish → cut consumers → delete Dockerfiles.
+**NEVER Dockerfile (lornu-ai & lornu-ai):** These orgs use **Nix OCI + dockworker.ai** for container images almost since the beginning. Do not add, restore, or recommend `Dockerfile`, `Dockerfile.*`, `docker build`, or `docker buildx`. Build via `flake.nix` OCI outputs and `dockworker.toml` (`engine = "nix"`); publish with `nix build` + `skopeo` or `dockworker push`. When migrating legacy Dockerfiles: Nix equivalent first → publish → cut consumers → delete Dockerfiles.
 
 - Never commit AWS Account IDs or GCP Project IDs in plaintext.
 - Use placeholders: `***REMOVED***`, `***REMOVED***`.
