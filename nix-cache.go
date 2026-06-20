@@ -17,7 +17,7 @@ type NixCache struct {
 	Trusted   bool   // Whether to trust the cache
 }
 
-// DefaultNixCaches are recommended caches for stevedores-org ecosystem
+// DefaultNixCaches are recommended caches for lornu-ai ecosystem
 var DefaultNixCaches = []NixCache{
 	{
 		Name:      "stevedores-attic",
@@ -192,7 +192,7 @@ func ConfigureAtticCache() error {
 	if atticCache.PublicKey != "" {
 		printf("   trusted-public-keys = %s\n\n", atticCache.PublicKey)
 	} else {
-		printf("   ⚠️  trusted-public-keys: not yet published — check https://github.com/stevedores-org/local-ci for updates\n\n")
+		printf("   ⚠️  trusted-public-keys: not yet published — check https://github.com/lornu-ai/local-ci for updates\n\n")
 	}
 
 	return nil

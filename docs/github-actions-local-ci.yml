@@ -5,7 +5,7 @@
 #
 # Install source of truth:
 #   lornu-ai repos  → github.com/lornu-ai/local-ci
-#   stevedores-org  → github.com/stevedores-org/local-ci (OSS)
+#   lornu-ai  → github.com/lornu-ai/local-ci (OSS)
 
 name: local-ci
 

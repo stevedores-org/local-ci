@@ -21,13 +21,13 @@ A lightweight, cacheable local CI runner for Rust and TypeScript/Bun workspaces.
 | Org | Repository | Use when |
 |-----|------------|----------|
 | `lornu-ai` | [github.com/lornu-ai/local-ci](https://github.com/lornu-ai/local-ci) | All `lornu-ai/*` consumer repos |
-| `stevedores-org` (OSS) | [github.com/stevedores-org/local-ci](https://github.com/stevedores-org/local-ci) | Open-source / external consumers |
+| `lornu-ai` (OSS) | [github.com/lornu-ai/local-ci](https://github.com/lornu-ai/local-ci) | Open-source / external consumers |
 
 ### From Source
 
 ```bash
 git clone https://github.com/lornu-ai/local-ci   # lornu-ai org
-# or: git clone https://github.com/stevedores-org/local-ci
+# or: git clone https://github.com/lornu-ai/local-ci
 cd local-ci
 go build -o local-ci
 sudo cp local-ci /usr/local/bin/
@@ -39,8 +39,8 @@ sudo cp local-ci /usr/local/bin/
 # lornu-ai org (pin SHA in CI — see docs/github-actions-local-ci.yml)
 go install github.com/lornu-ai/local-ci@latest
 
-# stevedores-org OSS
-# go install github.com/stevedores-org/local-ci@latest
+# lornu-ai OSS
+# go install github.com/lornu-ai/local-ci@latest
 ```
 
 ## Quick Start
@@ -350,10 +350,10 @@ local-ci supports attic binary cache integration for faster Nix builds:
 local-ci configure-nix-cache
 ```
 
-This adds `https://nix-cache.stevedores.org` to your Nix configuration for faster builds across all stevedores-org projects.
+This adds `https://nix-cache.stevedores.org` to your Nix configuration for faster builds across all lornu-ai projects.
 
 **Supported Caches:**
-- `stevedores-attic` (https://nix-cache.stevedores.org) - Trusted cache for stevedores-org ecosystem
+- `stevedores-attic` (https://nix-cache.stevedores.org) - Trusted cache for lornu-ai ecosystem
 - `cache.nixos.org` - Official NixOS binary cache
 
 **Manual Configuration:**
@@ -507,7 +507,7 @@ cargo install cargo-deny cargo-audit cargo-machete
 
 ## Contributing
 
-Bug reports and PRs welcome on GitHub: https://github.com/stevedores-org/local-ci
+Bug reports and PRs welcome on GitHub: https://github.com/lornu-ai/local-ci
 
 Each stage cache entry includes the command signature, so changing command args invalidates stale cache entries automatically.
 
