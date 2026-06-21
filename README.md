@@ -101,6 +101,42 @@ local-ci --list
 local-ci --version
 ```
 
+## GitHub Actions (reusable workflow)
+
+Centralize CI across repos: keep stage definitions in each repo's `.local-ci.toml`,
+and call the shared workflow from `lornu-ai/local-ci`.
+
+```yaml
+# .github/workflows/ci.yml  (consumer repo — ~15 lines)
+name: CI
+on:
+  pull_request:
+    branches: [main, develop]
+  push:
+    branches: [main, develop]
+
+jobs:
+  ci:
+    uses: lornu-ai/local-ci/.github/workflows/ci-reusable.yml@main
+    with:
+      profile: ci
+      local_ci_version: main   # pin to commit SHA once tags exist
+      setup_rust: true
+      setup_bun: false          # true for mixed Rust/TS monorepos (e.g. bullpen)
+    secrets: inherit
+```
+
+Initialize checks in a new repo:
+
+```bash
+local-ci init          # writes .local-ci.toml
+# add [profiles.ci] if missing — see harbormaster for a minimal Rust example
+git add .local-ci.toml .github/workflows/ci.yml
+```
+
+Pin `uses: ...@<sha>` and `local_ci_version: <sha>` in production repos until
+`local-ci` publishes semver tags.
+
 ### Flags
 
 ```bash

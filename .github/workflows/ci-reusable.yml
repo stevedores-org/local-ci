@@ -1,0 +1,147 @@
+# Reusable CI workflow — runs lornu-ai/local-ci as the single source of truth
+# for project checks. Consumer repos add a thin caller (~15 lines).
+#
+# Example (harbormaster/.github/workflows/ci.yml):
+#
+#   name: CI
+#   on:
+#     pull_request:
+#       branches: [main, develop]
+#     push:
+#       branches: [main, develop]
+#   jobs:
+#     ci:
+#       uses: lornu-ai/local-ci/.github/workflows/ci-reusable.yml@main
+#       secrets: inherit
+#
+# Pin @main to a commit SHA in production repos until semver tags exist.
+
+name: local-ci (reusable)
+
+on:
+  workflow_call:
+    inputs:
+      profile:
+        description: local-ci profile from .local-ci.toml
+        required: false
+        default: ci
+        type: string
+      local_ci_version:
+        description: git ref (commit SHA recommended) of github.com/lornu-ai/local-ci to install
+        required: false
+        default: 600da6b
+        type: string
+      timeout_minutes:
+        description: job timeout
+        required: false
+        default: "45"
+        type: string
+      setup_rust:
+        description: install stable Rust + rustfmt/clippy
+        required: false
+        default: true
+        type: boolean
+      setup_bun:
+        description: install Bun (mixed TS/Rust monorepos)
+        required: false
+        default: false
+        type: boolean
+      setup_go:
+        description: install Go (needed to go install local-ci)
+        required: false
+        default: true
+        type: boolean
+      rust_cache:
+        description: enable Swatinem/rust-cache
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: short
+  CARGO_NET_GIT_FETCH_WITH_CLI: "true"
+
+jobs:
+  local-ci:
+    name: local-ci
+    runs-on: ubuntu-latest
+    timeout-minutes: ${{ fromJSON(inputs.timeout_minutes) }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Rust
+        if: inputs.setup_rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+
+      - name: Rust cache
+        if: inputs.setup_rust && inputs.rust_cache
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            . -> target
+
+      - name: Configure Git credentials for private cargo dependencies
+        env:
+          AGENT_PAT: ${{ secrets.CODE_REVIEW_AGENT_PAT || secrets.CISO_AGENT_PAT || secrets.GITHUB_TOKEN }}
+        run: |
+          if [ -n "$AGENT_PAT" ]; then
+            git config --global url."https://x-access-token:${AGENT_PAT}@github.com/".insteadOf "https://github.com/"
+          else
+            echo "::warning::No PAT secret set; private git deps may fail"
+          fi
+
+      - name: Setup Bun
+        if: inputs.setup_bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Go
+        if: inputs.setup_go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+          cache: false
+
+      - name: Install local-ci
+        if: inputs.setup_go
+        run: GOPROXY=direct go install "github.com/lornu-ai/local-ci@${{ inputs.local_ci_version }}"
+
+      - name: Run local-ci
+        run: |
+          set -euo pipefail
+          local-ci --profile "${{ inputs.profile }}" --json | tee local-ci-results.json
+
+      - name: Post local-ci summary
+        if: always()
+        run: |
+          if [ -f local-ci-results.json ]; then
+            jq -r '.results[] | if .status == "pass" then "::notice title=\(.name)::✓ \(.name) passed (\(.duration_ms)ms)\(if .cache_hit then " [cached]" else "" end)"
+            elif .status == "fail" then "::error title=\(.name)::✗ \(.name) failed (\(.duration_ms)ms)\n\(.error // .output // "")"
+            else "::warning title=\(.name)::\(.name) status: \(.status)" end' local-ci-results.json
+
+            passed=$(jq '.passed' local-ci-results.json)
+            failed=$(jq '.failed' local-ci-results.json)
+            duration=$(jq '.duration_ms' local-ci-results.json)
+            {
+              echo "### local-ci Summary"
+              echo ""
+              echo "| Metric | Value |"
+              echo "|--------|-------|"
+              echo "| Passed | $passed |"
+              echo "| Failed | $failed |"
+              echo "| Duration | ${duration}ms |"
+              echo ""
+              echo "| Stage | Status | Duration | Cache |"
+              echo "|-------|--------|----------|-------|"
+              jq -r '.results[] | "| \(.name) | \(.status) | \(.duration_ms)ms | \(if .cache_hit then "cached" else "executed" end) |"' local-ci-results.json
+            } >> "$GITHUB_STEP_SUMMARY"
+          fi
