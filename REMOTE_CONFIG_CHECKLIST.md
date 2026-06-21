@@ -88,7 +88,7 @@ go version  # Check if already installed
 ssh aivcs@aivcs.local
 
 cd /tmp
-git clone https://github.com/stevedores-org/local-ci
+git clone https://github.com/lornu-ai/local-ci
 cd local-ci
 go build -o /usr/local/bin/local-ci
 chmod +x /usr/local/bin/local-ci
@@ -146,9 +146,9 @@ mkdir -p /tmp/local-ci-cache/$USER
 # On aivcs@aivcs.local
 ssh aivcs@aivcs.local
 
-# For stevedores-org Nix cache
+# For lornu-ai Nix cache
 cat >> ~/.config/nix/nix.conf <<EOF
-extra-substituters = https://nix-cache.stevedores.org https://cache.nixos.org
+extra-substituters = https://nix-cache.lornu.ai https://cache.nixos.org
 trusted-public-keys = oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI= cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
 EOF
 

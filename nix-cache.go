@@ -11,17 +11,17 @@ import (
 // NixCache represents a Nix binary cache configuration
 type NixCache struct {
 	Name      string // Display name
-	URL       string // Cache URL (e.g., https://nix-cache.stevedores.org)
+	URL       string // Cache URL (e.g., https://nix-cache.lornu.ai)
 	PublicKey string // Trusted public key (base64-encoded ed25519). Empty means unknown.
 	Public    bool   // Whether to add to public binary caches
 	Trusted   bool   // Whether to trust the cache
 }
 
-// DefaultNixCaches are recommended caches for stevedores-org ecosystem
+// DefaultNixCaches are recommended caches for lornu-ai ecosystem
 var DefaultNixCaches = []NixCache{
 	{
 		Name:      "stevedores-attic",
-		URL:       "https://nix-cache.stevedores.org",
+		URL:       "https://nix-cache.lornu.ai",
 		PublicKey: "oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI=",
 		Public:    true,
 		Trusted:   true,
@@ -192,7 +192,7 @@ func ConfigureAtticCache() error {
 	if atticCache.PublicKey != "" {
 		printf("   trusted-public-keys = %s\n\n", atticCache.PublicKey)
 	} else {
-		printf("   ⚠️  trusted-public-keys: not yet published — check https://github.com/stevedores-org/local-ci for updates\n\n")
+		printf("   ⚠️  trusted-public-keys: not yet published — check https://github.com/lornu-ai/local-ci for updates\n\n")
 	}
 
 	return nil

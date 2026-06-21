@@ -7,7 +7,7 @@
 ```bash
 brew install go
 go build -o local-ci .
-# or: go install github.com/stevedores-org/local-ci@latest
+# or: go install github.com/lornu-ai/local-ci@latest
 ```
 
 ## Server command

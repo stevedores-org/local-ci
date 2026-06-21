@@ -56,7 +56,7 @@ ssh aivcs@aivcs.local
 # Clone repo
 cd /tmp
 rm -rf local-ci  # Clean up if exists
-git clone https://github.com/stevedores-org/local-ci
+git clone https://github.com/lornu-ai/local-ci
 cd local-ci
 
 # Build
@@ -120,7 +120,7 @@ ssh aivcs@aivcs.local
 
 # Only if you use Nix/flake.nix
 cat >> ~/.config/nix/nix.conf <<EOF
-extra-substituters = https://nix-cache.stevedores.org https://cache.nixos.org
+extra-substituters = https://nix-cache.lornu.ai https://cache.nixos.org
 trusted-public-keys = oxidizedmlx-cache-1:uG3uzexkJno1b3b+dek7tHnHzr1p6MHxIoVTqnp/JBI= cache.nixos.org-1:6NCHdD59X431o0gWypQydGvjwydGG2UZTvhjGJNsx6E=
 EOF
 
@@ -171,7 +171,7 @@ ssh aivcs@aivcs.local tmux list-sessions
 ```bash
 # In the tmux session (terminal from Step 2A)
 cd /tmp
-git clone https://github.com/stevedores-org/knittingCrab
+git clone https://github.com/lornu-ai/knittingCrab
 cd knittingCrab
 ```
 
