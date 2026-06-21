@@ -29,7 +29,7 @@ on:
       local_ci_version:
         description: git ref (commit SHA recommended) of github.com/lornu-ai/local-ci to install
         required: false
-        default: 600da6b
+        default: 869b6e4
         type: string
       timeout_minutes:
         description: job timeout
@@ -108,7 +108,7 @@ jobs:
         if: inputs.setup_go
         uses: actions/setup-go@v5
         with:
-          go-version: "1.22"
+          go-version: "1.23"
           cache: false
 
       - name: Install local-ci
