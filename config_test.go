@@ -232,18 +232,19 @@ func TestGetProfileReferencesUnknownStage(t *testing.T) {
 func TestGetProfileStagesOrder(t *testing.T) {
 	config := &Config{
 		Stages: map[string]Stage{
-			"test":   {Name: "test", Enabled: true},
-			"fmt":    {Name: "fmt", Enabled: true},
-			"clippy": {Name: "clippy", Enabled: true},
+			"test":      {Name: "test", Enabled: true},
+			"fmt":       {Name: "fmt", Enabled: true},
+			"clippy":    {Name: "clippy", Enabled: true},
+			"yaml-lint": {Name: "yaml-lint", Enabled: true},
 		},
 		Profiles: map[string]Profile{},
 	}
 
-	p := &Profile{Stages: []string{"test", "clippy", "fmt"}}
+	p := &Profile{Stages: []string{"test", "clippy", "yaml-lint", "fmt"}}
 	ordered := config.GetProfileStages(p)
 
-	// Should be sorted by priority: fmt(0) < clippy(1) < test(3)
-	expected := []string{"fmt", "clippy", "test"}
+	// Should be sorted by priority: fmt < yaml-lint < clippy < test
+	expected := []string{"fmt", "yaml-lint", "clippy", "test"}
 	for i, name := range expected {
 		if ordered[i] != name {
 			t.Errorf("position %d: expected %q, got %q (full: %v)", i, name, ordered[i], ordered)

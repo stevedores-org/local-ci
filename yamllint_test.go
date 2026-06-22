@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -76,5 +77,40 @@ func TestCmdYamllintNoFiles(t *testing.T) {
 	err = cmdYamllint(tmpDir)
 	if err != nil {
 		t.Errorf("expected no error when no yaml files found, got: %v", err)
+	}
+}
+
+func TestCmdYamllintSkipsWhenToolMissing(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yml"), []byte("name: test\n"), 0644); err != nil {
+		t.Fatalf("failed to write yaml file: %v", err)
+	}
+
+	t.Setenv("PATH", tmpDir)
+
+	if err := cmdYamllint(tmpDir); err != nil {
+		t.Fatalf("expected missing optional yamllint to skip without error, got: %v", err)
+	}
+}
+
+func TestCmdYamllintReturnsFailure(t *testing.T) {
+	tmpDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(tmpDir, "config.yml"), []byte("name: test\n"), 0644); err != nil {
+		t.Fatalf("failed to write yaml file: %v", err)
+	}
+
+	binDir := t.TempDir()
+	fakeYamllint := filepath.Join(binDir, "yamllint")
+	if err := os.WriteFile(fakeYamllint, []byte("#!/bin/sh\nexit 7\n"), 0755); err != nil {
+		t.Fatalf("failed to write fake yamllint: %v", err)
+	}
+	t.Setenv("PATH", binDir)
+
+	err := cmdYamllint(tmpDir)
+	if err == nil {
+		t.Fatal("expected yamllint failure to return an error")
+	}
+	if !strings.Contains(err.Error(), "exit code 7") {
+		t.Fatalf("expected exit code in error, got: %v", err)
 	}
 }

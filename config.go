@@ -530,7 +530,7 @@ func (c *Config) GetProfileStages(p *Profile) []string {
 	}
 
 	// Use the same ordering as GetEnabledStages
-	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+	order := []string{"fmt", "yaml-lint", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
 	inProfile := make(map[string]bool)
 	for _, s := range p.Stages {
 		inProfile[s] = true

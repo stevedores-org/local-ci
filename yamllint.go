@@ -44,11 +44,6 @@ func findYAMLFiles(root string, skipDirs []string) ([]string, error) {
 
 // cmdYamllint runs the yaml lint check using the python yamllint command and a temporary configuration file
 func cmdYamllint(root string) error {
-	// Check if yamllint is installed
-	if _, err := exec.LookPath("yamllint"); err != nil {
-		return fmt.Errorf("yamllint not found in PATH. Please install it using 'pip install yamllint' or 'brew install yamllint'")
-	}
-
 	// Load config to get skip_dirs
 	config, err := LoadConfig(root, false)
 	var skipDirs []string
@@ -66,6 +61,11 @@ func cmdYamllint(root string) error {
 
 	if len(yamlFiles) == 0 {
 		fmt.Println("No YAML files found.")
+		return nil
+	}
+
+	if _, err := exec.LookPath("yamllint"); err != nil {
+		fmt.Println("yamllint not found in PATH; skipping YAML lint. Install it with 'pip install yamllint' or 'brew install yamllint'.")
 		return nil
 	}
 
@@ -99,9 +99,8 @@ rules:
 	cmd.Stderr = os.Stderr
 
 	if err := cmd.Run(); err != nil {
-		// Exit code of the command is propagated
 		if exitError, ok := err.(*exec.ExitError); ok {
-			os.Exit(exitError.ExitCode())
+			return fmt.Errorf("yamllint failed with exit code %d", exitError.ExitCode())
 		}
 		return fmt.Errorf("failed to run yamllint: %w", err)
 	}
