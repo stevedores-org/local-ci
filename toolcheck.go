@@ -111,6 +111,14 @@ var systemTools = []Tool{
 		ToolType:   "system",
 		Optional:   true,
 	},
+	{
+		Name:       "yamllint",
+		Command:    "yamllint",
+		CheckArgs:  []string{"--version"},
+		InstallCmd: "pip install yamllint",
+		ToolType:   "system",
+		Optional:   true,
+	},
 }
 
 // ToolCheck represents the result of checking for a tool

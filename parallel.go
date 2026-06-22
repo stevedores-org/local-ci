@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"os"
 	"os/exec"
 	"runtime"
 	"sync"
@@ -176,7 +177,11 @@ func (r *ParallelRunner) executeStage(stage Stage) Result {
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
+	exe := stage.Cmd[0]
+	if exe == "local-ci" {
+		exe = os.Args[0]
+	}
+	cmd := exec.CommandContext(ctx, exe, stage.Cmd[1:]...)
 	var out bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &out

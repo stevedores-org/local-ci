@@ -79,6 +79,18 @@ func LoadConfig(root string, remote bool) (*Config, error) {
 	// Detect project type for smart defaults
 	projectType := DetectProjectType(root)
 	defaultStages := GetDefaultStagesForType(projectType)
+	if _, exists := defaultStages["yaml-lint"]; !exists {
+		defaultStages["yaml-lint"] = Stage{
+			Name:      "yaml-lint",
+			Cmd:       []string{"local-ci", "yamllint"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   120,
+			Enabled:   true,
+			DependsOn: []string{},
+			Watch:     []string{"*.yml", "*.yaml"},
+		}
+	}
 	cachePatterns := GetCachePatternForType(projectType)
 	skipDirs := GetSkipDirsForType(projectType)
 
@@ -293,6 +305,16 @@ func defaultStages() map[string]Stage {
 			DependsOn: []string{},
 			Watch:     []string{"*.toml"},
 		},
+		"yaml-lint": {
+			Name:      "yaml-lint",
+			Cmd:       []string{"local-ci", "yamllint"},
+			FixCmd:    nil,
+			Check:     false,
+			Timeout:   120,
+			Enabled:   true,
+			DependsOn: []string{},
+			Watch:     []string{"*.yml", "*.yaml"},
+		},
 	}
 }
 
@@ -322,7 +344,7 @@ func (c *Config) GetTimeout(stageName string) time.Duration {
 // GetEnabledStages returns the list of enabled stage names in deterministic order
 func (c *Config) GetEnabledStages() []string {
 	// Define default order for common stages to ensure deterministic output
-	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+	order := []string{"fmt", "yaml-lint", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
 
 	var enabled []string
 	// First add stages in predefined order if they exist and are enabled
@@ -353,7 +375,7 @@ func (c *Config) GetEnabledStages() []string {
 // deterministic order — the same ordering as GetEnabledStages, but without the
 // enabled filter. Used by the --all flag.
 func (c *Config) GetAllStages() []string {
-	order := []string{"fmt", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
+	order := []string{"fmt", "yaml-lint", "check", "clippy", "test", "lint", "vet", "types", "build", "audit", "deny", "machete", "taplo"}
 
 	var all []string
 	seen := make(map[string]bool)

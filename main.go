@@ -249,6 +249,11 @@ func main() {
 				fatalf("MCP server error: %v", err)
 			}
 			return
+		} else if args[0] == "yamllint" {
+			if err := cmdYamllint(cwd); err != nil {
+				fatalf("yamllint error: %v", err)
+			}
+			return
 		}
 	}
 
@@ -663,7 +668,11 @@ func main() {
 			}
 
 			ctx, cancel := context.WithTimeout(context.Background(), timeout)
-			cmd := exec.CommandContext(ctx, stage.Cmd[0], stage.Cmd[1:]...)
+			exe := stage.Cmd[0]
+			if exe == "local-ci" {
+				exe = os.Args[0]
+			}
+			cmd := exec.CommandContext(ctx, exe, stage.Cmd[1:]...)
 			var out bytes.Buffer
 			cmd.Stdout = &out
 			cmd.Stderr = &out
@@ -1072,6 +1081,9 @@ func fatalf(format string, args ...interface{}) {
 
 // requireCommand checks if a command is available in PATH
 func requireCommand(name string) error {
+	if name == "local-ci" {
+		return nil
+	}
 	if _, err := exec.LookPath(name); err != nil {
 		return fmt.Errorf("%q not found in PATH", name)
 	}
