@@ -66,6 +66,27 @@ func TestFindYAMLFiles(t *testing.T) {
 	}
 }
 
+func TestYAMLLintIncludesGithubWorkflows(t *testing.T) {
+	tmpDir := t.TempDir()
+	workflowDir := filepath.Join(tmpDir, ".github", "workflows")
+	if err := os.MkdirAll(workflowDir, 0755); err != nil {
+		t.Fatalf("failed to create workflow dir: %v", err)
+	}
+	if err := os.WriteFile(filepath.Join(workflowDir, "ci.yml"), []byte("name: ci\n"), 0644); err != nil {
+		t.Fatalf("failed to write workflow file: %v", err)
+	}
+
+	found, err := findYAMLFiles(tmpDir, yamlLintSkipDirs([]string{".git", ".github", "target"}))
+	if err != nil {
+		t.Fatalf("findYAMLFiles failed: %v", err)
+	}
+
+	expected := filepath.Join(".github", "workflows", "ci.yml")
+	if len(found) != 1 || found[0] != expected {
+		t.Fatalf("expected %q to be linted, got %v", expected, found)
+	}
+}
+
 func TestCmdYamllintNoFiles(t *testing.T) {
 	tmpDir, err := os.MkdirTemp("", "yamllint-test-empty-*")
 	if err != nil {

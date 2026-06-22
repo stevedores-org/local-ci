@@ -42,6 +42,17 @@ func findYAMLFiles(root string, skipDirs []string) ([]string, error) {
 	return files, err
 }
 
+func yamlLintSkipDirs(skipDirs []string) []string {
+	filtered := make([]string, 0, len(skipDirs))
+	for _, dir := range skipDirs {
+		if dir == ".github" {
+			continue
+		}
+		filtered = append(filtered, dir)
+	}
+	return filtered
+}
+
 // cmdYamllint runs the yaml lint check using the python yamllint command and a temporary configuration file
 func cmdYamllint(root string) error {
 	// Load config to get skip_dirs
@@ -54,7 +65,7 @@ func cmdYamllint(root string) error {
 		skipDirs = []string{".git", "node_modules", "target", "build", "dist", ".venv", "venv"}
 	}
 
-	yamlFiles, err := findYAMLFiles(root, skipDirs)
+	yamlFiles, err := findYAMLFiles(root, yamlLintSkipDirs(skipDirs))
 	if err != nil {
 		return fmt.Errorf("failed to scan for YAML files: %w", err)
 	}
