@@ -1,4 +1,4 @@
-name: CI
+name: ci
 
 on:
   push:
@@ -6,67 +6,11 @@ on:
   pull_request:
     branches: [main, develop]
 
+permissions:
+  contents: read
+
 jobs:
-  test:
-    name: Build & Test
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version: '1.22'
-
-      - name: Go cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
-
-      - name: Install dependencies
-        run: go mod download
-
-      - name: Verify dependencies
-        run: go mod verify
-
-      - name: Format Go files
-        run: gofmt -w .
-
-      - name: Push auto-fixed formatting changes
-        if: github.event_name == 'push' && always()
-        run: |
-          if [ -n "$(git status --porcelain)" ]; then
-            git config --global user.name "github-actions[bot]"
-            git config --global user.email "github-actions[bot]@users.noreply.github.com"
-            git commit -am "chore: auto-format Go code"
-            git push
-          fi
-
-      - name: Go Vet
-        run: go vet ./...
-
-      - name: Build
-        run: go build -v .
-
-      - name: Run Tests
-        run: go test -v -race ./...
-
-  nix-checks:
-    name: Nix Flake Check
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Setup Nix
-        uses: cachix/install-nix-action@v31
-
-      - name: Nix flake check
-        run: nix flake check --print-build-logs
+  propel:
+    name: Propel CI
+    uses: lornu-ai/ci-checks/.github/workflows/wfc-gha.yml@main
+    secrets: inherit

@@ -1,0 +1,58 @@
+# propel.toml — Unified CI configuration
+# Standard: https://github.com/lornu-ai/ci-checks/issues/4
+# Checks run via worry-free-crab (FFT) using hermetic Nix environment
+
+[project]
+name = "local-ci"
+repo = "lornu-ai/local-ci"
+description = "Lornu AI repository"
+
+# Standard Rust checks
+[[check]]
+name        = "fmt"
+description = "Check code formatting"
+command     = ["cargo", "fmt", "--all", "--", "--check"]
+timeout     = 120
+check       = true
+
+[[check]]
+name        = "clippy"
+description = "Run Cargo Clippy lint checks"
+command     = ["cargo", "clippy", "--all-targets", "--all-features", "--", "-D", "warnings"]
+timeout     = 600
+check       = true
+
+[[check]]
+name        = "test"
+description = "Run unit tests"
+command     = ["cargo", "test", "--all", "--all-features"]
+timeout     = 900
+check       = true
+
+# YAML validation
+[[check]]
+name        = "yamllint"
+description = "Lint GitHub workflow YAML"
+command     = ["yamllint", ".github/workflows"]
+timeout     = 120
+check       = true
+
+[[check]]
+name        = "secrets"
+description = "gitleaks secret detection"
+command     = ["gitleaks", "detect", "--no-banner", "--redact"]
+timeout     = 120
+check       = true
+
+# Policy & integration
+[policy]
+requires_human_approval = false
+secrets_scope = "ci/repos/lornu-ai/local-ci"
+allowed_orgs  = ["lornu-ai", "stevedores-org"]
+allowed_refs  = ["refs/heads/main", "refs/heads/develop"]
+
+[propel]
+enabled = true
+provider = "propel.aivcs.io"
+github_status_checks = true
+github_pr_comments = true
