@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   push:
@@ -10,7 +10,23 @@ permissions:
   contents: read
 
 jobs:
-  propel:
-    name: Propel CI
-    uses: lornu-ai/ci-checks/.github/workflows/wfc-gha.yml@main
-    secrets: inherit
+  build-and-test:
+    name: Build & Test
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.23"
+
+      - name: Verify dependencies
+        run: go mod verify
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Run go test
+        run: go test -v ./...

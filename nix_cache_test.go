@@ -17,7 +17,7 @@ func TestCacheListContains(t *testing.T) {
 	}{
 		{"exact match", "https://cache.nixos.org", true},
 		{"exact match trailing slash", "https://cache.nixos.org/", true},
-		{"different cache", "https://lornu.attic.example/main", false},
+		{"different cache", "https://stevedores.attic.example/main", false},
 		// Regressions for the old bidirectional substring match:
 		{"requested is superstring of installed", "https://cache.nixos.org/extra", false},
 		{"installed is superstring of requested", "https://cache", false},
@@ -60,7 +60,7 @@ func TestDefaultCachesConfiguration(t *testing.T) {
 		t.Error("stevedores-attic should be public")
 	}
 
-	if stevedores.URL != "https://nix-cache.lornu.ai" {
+	if stevedores.URL != "https://nix-cache.stevedores.org" {
 		t.Errorf("Expected stevedores cache URL, got %s", stevedores.URL)
 	}
 }
@@ -86,7 +86,7 @@ func TestGetInstalledCaches(t *testing.T) {
 
 func TestAtticCacheURL(t *testing.T) {
 	// Verify stevedores cache URL is correct
-	expected := "https://nix-cache.lornu.ai"
+	expected := "https://nix-cache.stevedores.org"
 	actual := DefaultNixCaches[0].URL
 
 	if actual != expected {
@@ -124,7 +124,7 @@ func TestIsCacheInstalledExactMatch(t *testing.T) {
 	getInstalledCachesHook = func() ([]string, error) {
 		return []string{
 			"https://cache.nixos.org",
-			"https://nix-cache.lornu.ai/",
+			"https://nix-cache.stevedores.org/",
 		}, nil
 	}
 	t.Cleanup(func() { getInstalledCachesHook = nil })
@@ -132,13 +132,13 @@ func TestIsCacheInstalledExactMatch(t *testing.T) {
 	if !IsCacheInstalled("https://cache.nixos.org/") {
 		t.Fatal("expected exact normalized match for cache.nixos.org")
 	}
-	if !IsCacheInstalled("https://nix-cache.lornu.ai") {
+	if !IsCacheInstalled("https://nix-cache.stevedores.org") {
 		t.Fatal("expected stevedores cache match")
 	}
 	if IsCacheInstalled("https://cache.nixos.org/extra") {
 		t.Fatal("substring URL must not match configured cache.nixos.org")
 	}
-	if IsCacheInstalled("https://nix-cache.lornu.ai/evil") {
+	if IsCacheInstalled("https://nix-cache.stevedores.org/evil") {
 		t.Fatal("substring URL must not match configured stevedores cache")
 	}
 }

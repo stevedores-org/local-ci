@@ -1,11 +1,11 @@
-# Canonical GitHub Actions workflow for lornu-ai org consumer repos.
+# Canonical GitHub Actions workflow for stevedores-org consumer repos.
 #
 # Copy to: .github/workflows/local-ci.yml
 # Configure: .local-ci.toml (see repo root example)
 #
 # Install source of truth:
-#   lornu-ai repos  → github.com/lornu-ai/local-ci
-#   lornu-ai  → github.com/lornu-ai/local-ci (OSS)
+#   stevedores-org repos  → github.com/stevedores-org/local-ci
+#   stevedores-org  → github.com/stevedores-org/local-ci (OSS)
 
 name: local-ci
 
@@ -24,7 +24,7 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  # Pin to lornu-ai/local-ci main HEAD SHA (no semver tags yet).
+  # Pin to stevedores-org/local-ci main HEAD SHA (no semver tags yet).
   LOCAL_CI_VERSION: 020cd120a7c241703cff1554cc11ade757037a9d
   GO_VERSION: "1.23"
   RUST_TOOLCHAIN: "stable"
@@ -63,10 +63,10 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-localci-${{ github.ref }}-
 
-      - name: Install local-ci (lornu-ai SoT)
+      - name: Install local-ci (stevedores-org SoT)
         run: |
           set -euo pipefail
-          GOPROXY=direct go install "github.com/lornu-ai/local-ci@${LOCAL_CI_VERSION}"
+          GOPROXY=direct go install "github.com/stevedores-org/local-ci@${LOCAL_CI_VERSION}"
           command -v local-ci >/dev/null
 
       - name: Run local-ci

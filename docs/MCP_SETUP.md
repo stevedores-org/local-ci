@@ -7,7 +7,7 @@
 ```bash
 brew install go
 go build -o local-ci .
-# or: go install github.com/lornu-ai/local-ci@latest
+# or: go install github.com/stevedores-org/local-ci@latest
 ```
 
 ## Server command
@@ -39,6 +39,4 @@ Use an **absolute path** to the binary in MCP configs:
 
 Restart the IDE (or refresh MCP in Windsurf Cascade) after editing.
 
-## Fleet MCP hub
 
-For Lornu AI shared state and provider tools, use [lornu-ai/lornu.ai-mcp](https://github.com/lornu-ai/lornu.ai-mcp) — run `./scripts/setup-mcp-local.sh` from that repo.

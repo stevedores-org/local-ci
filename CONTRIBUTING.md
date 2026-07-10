@@ -3,7 +3,7 @@
 ## Quick Start
 
 ```bash
-git clone https://github.com/lornu-ai/local-ci
+git clone https://github.com/stevedores-org/local-ci
 cd local-ci
 go test -v ./...    # verify tests pass
 go build -o local-ci .
@@ -76,13 +76,4 @@ local-ci init       # creates .local-ci.toml, updates .gitignore, adds pre-commi
 local-ci            # run default stages (fmt, clippy, test)
 ```
 
-## Supported Repos
-
-local-ci is designed for all lornu-ai Rust workspaces:
-
-- [llama.rs](https://github.com/lornu-ai/llama.rs) — inference runtime
-- [oxidizedRAG](https://github.com/lornu-ai/oxidizedRAG) — GraphRAG
-- [oxidizedMLX](https://github.com/lornu-ai/oxidizedMLX) — MLX bindings
-- [oxidizedgraph](https://github.com/lornu-ai/oxidizedgraph) — LangGraph
-- [aivcs](https://github.com/lornu-ai/aivcs) — AI version control
-- [DevProd-AI](https://github.com/lornu-ai/DevProd-AI) — DevProd tooling
+local-ci is designed for generic software development workspaces, supporting Go, Rust, Python, Java, Swift, TypeScript, and more.
